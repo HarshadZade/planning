@@ -60,7 +60,5 @@ void planner(int* map, int collision_thresh, int x_size, int y_size, int robotpo
   int goalposeX = target_traj[target_steps - 1];
   int goalposeY = target_traj[target_steps - 1 + target_steps];
 
-  
-
   return;
 }
