@@ -144,8 +144,8 @@ void planner(int* map, int collision_thresh, int x_size, int y_size, int robotpo
                   temp->g = new_state->g;
                   temp->parent = new_state->parent;
                 }
-                open_list.push(temp);
               }
+              open_list.push(temp);
             }
 
             // If the new state is not in the open list, add the new state to the open list
@@ -154,6 +154,9 @@ void planner(int* map, int collision_thresh, int x_size, int y_size, int robotpo
               open_list.push(new_state);
             }
           }
-
-          return;
         }
+      }
+    }
+  }
+  return;
+}
