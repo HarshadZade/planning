@@ -8,6 +8,7 @@
 #include <vector>
 #include <queue>
 #include <iostream>
+#include <unordered_set>
 
 #define GETMAPINDEX(X, Y, XSIZE, YSIZE) ((Y - 1) * XSIZE + (X - 1))
 
@@ -28,6 +29,12 @@ struct State
   int g;          // Cost from the start node to this node
   int h;          // Heuristic (e.g., Euclidean distance to the target)
   State* parent;  // Pointer to the parent state
+
+  // Define a custom equality operator for the State class
+  bool operator==(const State& s) const
+  {
+    return (x == s.x && y == s.y);
+  }
 };
 
 // Define a comparison function for the priority queue
@@ -38,6 +45,30 @@ struct CompareStates
     return (a->g + a->h) > (b->g + b->h);
   }
 };
+
+// Define a custom hash function for State class
+template <>
+struct std::hash<State*>
+{
+  size_t operator()(const State* s) const
+  {
+    return std::hash<int>()(s->x) ^ std::hash<int>()(s->y);
+    // return s->x * 1000 + s->y;
+  }
+};
+
+// struct StateHash
+// {
+//   size_t operator()(const State* s) const
+//   {
+//     return std::hash<int>()(s->x) ^ std::hash<int>()(s->y);
+//     // return s->x * 1000 + s->y;
+//   }
+// };
+
+// Create an unordered set to store the states in the open list
+// std::unordered_set<State*, StateHash> open_set;
+std::unordered_set<State*> open_set;
 
 static int flag = 0;
 
@@ -65,6 +96,7 @@ void planner(int* map, int collision_thresh, int x_size, int y_size, int robotpo
     start->x = robotposeX;
     start->y = robotposeY;
     open_list.push(start);
+    open_set.insert(start);
     flag = 1;
   }
 
@@ -92,6 +124,20 @@ void planner(int* map, int collision_thresh, int x_size, int y_size, int robotpo
     return;
   };
 
+  // Lambda function to backtrack the optimal path
+  auto backtrack_path = [&](State* goal) {
+    // Backtrack to extract the optimal path
+    State* temp = goal;
+    while (temp->parent != nullptr)
+    {
+      // store the whole path in a desired robot trajectory
+      robot_traj.push_back(std::make_pair(temp->x, temp->y));
+      temp = temp->parent;
+    }
+    std::cout << "robot_traj size: " << robot_traj.size() << std::endl;
+    return;
+  };
+
   if (is_planning_done)
   {
     get_action();
@@ -103,25 +149,19 @@ void planner(int* map, int collision_thresh, int x_size, int y_size, int robotpo
     // Pop the state with the lowest cost from the open list
     State* current = open_list.top();
     open_list.pop();
+    // std::cout << "current: " << current->x << " " << current->y << std::endl;
+    std::cout << "size: " << open_list.size() << std::endl;
+    // Add the current state to the closed list
+    closed_list[current->x][current->y] = true;  // FIXME: Indexing is incorrect here?
 
     // Check if the current state is the goal state
     if (current->x == goal->x && current->y == goal->y)
     {
-      // Backtrack to extract the optimal path
-      State* temp = current;
-      while (temp->parent != nullptr)
-      {
-        // store the whole path in a desired robot trajectory
-        robot_traj.push_back(std::make_pair(temp->x, temp->y));
-        temp = temp->parent;
-      }
       is_planning_done = true;
+      backtrack_path(current);
       get_action();
-      return;
+      break;
     }
-
-    // Add the current state to the closed list
-    closed_list[current->x][current->y] = true;
 
     // Expand the current state
     for (int dir = 0; dir < NUMOFDIRS; dir++)
@@ -133,43 +173,36 @@ void planner(int* map, int collision_thresh, int x_size, int y_size, int robotpo
       if (newx >= 1 && newx <= x_size && newy >= 1 && newy <= y_size)
       {
         // Check if the new state is free
-        if ((map[GETMAPINDEX(newx, newy, x_size, y_size)] >= 0) &&
-            (map[GETMAPINDEX(newx, newy, x_size, y_size)] < collision_thresh))
+        int cell_cost = (int)map[GETMAPINDEX(newx, newy, x_size, y_size)];
+        if ((cell_cost >= 0) && (cell_cost < collision_thresh))
         {
           // Check if the new state is in the closed list
           if (!closed_list[newx][newy])
           {
             // Make a new state for the new state
-            State* new_state = new State{ newx, newy, current->g + 1, 0, current };
+            State* new_state = new State{ newx, newy, current->g + cell_cost, 0, current };
 
-            // Compute the heuristic for the new state
-            // TODO: use diagonal distance instead of Euclidean distance
-            new_state->h = (int)sqrt((pow(new_state->x - goal->x, 2) + pow(new_state->y - goal->y, 2)));
+            // Compute the heuristic for the new state. Diagonal distance is used here.
+            new_state->h = MAX(abs(new_state->x - goal->x), abs(new_state->y - goal->y));
 
             // Check if the new state is in the open list
-            // TODO: make this efficient
-            bool in_open_list = false;
-            for (int i = 0; i < open_list.size(); i++)
+            bool in_open_list = open_set.find(new_state) != open_set.end();
+            if (in_open_list)
             {
-              State* temp = open_list.top();
-              open_list.pop();
-              if (temp->x == new_state->x && temp->y == new_state->y)
+              std::cout << "in open list" << std::endl;
+              // If the new state is in the open list, update the cost and parent if necessary
+              State* existing_state = *open_set.find(new_state);
+              if (new_state->g < existing_state->g)
               {
-                in_open_list = true;
-                // If the new state is in the open list, update the cost and parent if necessary
-                if (new_state->g < temp->g)
-                {
-                  temp->g = new_state->g;
-                  temp->parent = new_state->parent;
-                }
+                existing_state->g = new_state->g;
+                existing_state->parent = new_state->parent;
               }
-              open_list.push(temp);
             }
-
-            // If the new state is not in the open list, add the new state to the open list
-            if (!in_open_list)
+            else
             {
+              // Add the new state to the open list and the open set
               open_list.push(new_state);
+              open_set.insert(new_state);
             }
           }
         }
