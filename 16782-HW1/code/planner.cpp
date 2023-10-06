@@ -7,6 +7,7 @@
 #include <math.h>
 #include <vector>
 #include <queue>
+#include <iostream>
 
 #define GETMAPINDEX(X, Y, XSIZE, YSIZE) ((Y - 1) * XSIZE + (X - 1))
 
@@ -38,27 +39,64 @@ struct CompareStates
   }
 };
 
+static int flag = 0;
+
+// 8-connected grid
+int dX[NUMOFDIRS] = { -1, -1, -1, 0, 0, 1, 1, 1 };
+int dY[NUMOFDIRS] = { -1, 0, 1, -1, 1, -1, 0, 1 };
+
+// Desired robot trajectory
+std::vector<std::pair<int, int>> robot_traj;
+static bool is_planning_done = false;
+
 void planner(int* map, int collision_thresh, int x_size, int y_size, int robotposeX, int robotposeY, int target_steps,
              int* target_traj, int targetposeX, int targetposeY, int curr_time, int* action_ptr)
 {
-  // 8-connected grid
-  int dX[NUMOFDIRS] = { -1, -1, -1, 0, 0, 1, 1, 1 };
-  int dY[NUMOFDIRS] = { -1, 0, 1, -1, 1, -1, 0, 1 };
-
   // Create an open list (priority queue) for states to explore
   std::priority_queue<State*, std::vector<State*>, CompareStates> open_list;
 
   // Create a closed list to keep track of explored states
   std::vector<std::vector<bool>> closed_list(x_size, std::vector<bool>(y_size, false));
 
-  // Initialize the start state
-  State* start = new State{ robotposeX, robotposeY, 0, 0, nullptr };  // TODO: this should only be done once?
-  open_list.push(start);
+  // Initialize the start state just once
+  static State* start = new State{ 0, 0, 0, 0, nullptr };  // TODO: this should only be done once?
+  if (flag == 0)
+  {
+    start->x = robotposeX;
+    start->y = robotposeY;
+    open_list.push(start);
+    flag = 1;
+  }
 
   // Initialize the goal state
   int goalposeX = target_traj[target_steps - 1];
   int goalposeY = target_traj[target_steps - 1 + target_steps];
   State* goal = new State{ goalposeX, goalposeY, 0, 0, nullptr };
+
+  auto get_action = [&] {
+    if (robot_traj.empty())
+    {
+      int newx = robotposeX;
+      int newy = robotposeY;
+      action_ptr[0] = newx;
+      action_ptr[1] = newy;
+      return;
+    }
+    int newx = robot_traj.back().first;
+    int newy = robot_traj.back().second;
+    robot_traj.pop_back();
+    std::cout << "newx: " << newx << " newy: " << newy << std::endl;
+    action_ptr[0] = newx;
+    action_ptr[1] = newy;
+    std::cout << "action: " << action_ptr[0] << " " << action_ptr[1] << std::endl;
+    return;
+  };
+
+  if (is_planning_done)
+  {
+    get_action();
+    return;
+  }
 
   while (!open_list.empty())
   {
@@ -73,34 +111,12 @@ void planner(int* map, int collision_thresh, int x_size, int y_size, int robotpo
       State* temp = current;
       while (temp->parent != nullptr)
       {
+        // store the whole path in a desired robot trajectory
+        robot_traj.push_back(std::make_pair(temp->x, temp->y));
         temp = temp->parent;
       }
-
-      // Return the action to take by using dx and dy
-      int newx = current->x - temp->x;
-      int newy = current->y - temp->y;
-      action_ptr[0] = newx;
-      action_ptr[1] = newy;
-
-      // // Delete the states in the open list
-      // while (!open_list.empty())
-      // {
-      //   State* temp = open_list.top();
-      //   open_list.pop();
-      //   delete temp;
-      // }
-
-      // // Delete the states in the closed list
-      // for (int i = 0; i < closed_list.size(); i++)
-      // {
-      //   for (int j = 0; j < closed_list[i].size(); j++)
-      //   {
-      //     if (closed_list[i][j])
-      //     {
-      //       closed_list[i].erase(closed_list[i].begin() + j);
-      //     }
-      //   }
-      // }
+      is_planning_done = true;
+      get_action();
       return;
     }
 
@@ -127,9 +143,11 @@ void planner(int* map, int collision_thresh, int x_size, int y_size, int robotpo
             State* new_state = new State{ newx, newy, current->g + 1, 0, current };
 
             // Compute the heuristic for the new state
+            // TODO: use diagonal distance instead of Euclidean distance
             new_state->h = (int)sqrt((pow(new_state->x - goal->x, 2) + pow(new_state->y - goal->y, 2)));
 
             // Check if the new state is in the open list
+            // TODO: make this efficient
             bool in_open_list = false;
             for (int i = 0; i < open_list.size(); i++)
             {
@@ -158,5 +176,5 @@ void planner(int* map, int collision_thresh, int x_size, int y_size, int robotpo
       }
     }
   }
-  return;
+  // return;
 }
