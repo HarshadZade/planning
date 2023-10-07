@@ -68,7 +68,6 @@ struct std::hash<State*>
 
 // Create an unordered set to store the states in the open list
 // std::unordered_set<State*, StateHash> open_set;
-std::unordered_set<State*> open_set;
 
 static int flag = 0;
 
@@ -84,10 +83,12 @@ void planner(int* map, int collision_thresh, int x_size, int y_size, int robotpo
              int* target_traj, int targetposeX, int targetposeY, int curr_time, int* action_ptr)
 {
   // Create an open list (priority queue) for states to explore
-  std::priority_queue<State*, std::vector<State*>, CompareStates> open_list;
+  static std::priority_queue<State*, std::vector<State*>, CompareStates> open_list;
 
   // Create a closed list to keep track of explored states
-  std::vector<std::vector<bool>> closed_list(x_size, std::vector<bool>(y_size, false));
+  static std::vector<std::vector<bool>> closed_list(x_size, std::vector<bool>(y_size, false));
+
+  static std::unordered_set<State*> open_set;
 
   // Initialize the start state just once
   static State* start = new State{ 0, 0, 0, 0, nullptr };  // TODO: this should only be done once?
@@ -149,10 +150,11 @@ void planner(int* map, int collision_thresh, int x_size, int y_size, int robotpo
     // Pop the state with the lowest cost from the open list
     State* current = open_list.top();
     open_list.pop();
+    open_set.erase(current);
     // std::cout << "current: " << current->x << " " << current->y << std::endl;
     std::cout << "size: " << open_list.size() << std::endl;
     // Add the current state to the closed list
-    closed_list[current->x][current->y] = true;  // FIXME: Indexing is incorrect here?
+    closed_list[current->x - 1][current->y - 1] = true;  // FIXME: Indexing is incorrect here?
 
     // Check if the current state is the goal state
     if (current->x == goal->x && current->y == goal->y)
@@ -177,7 +179,7 @@ void planner(int* map, int collision_thresh, int x_size, int y_size, int robotpo
         if ((cell_cost >= 0) && (cell_cost < collision_thresh))
         {
           // Check if the new state is in the closed list
-          if (!closed_list[newx][newy])
+          if (!closed_list[newx - 1][newy - 1])
           {
             // Make a new state for the new state
             State* new_state = new State{ newx, newy, current->g + cell_cost, 0, current };
