@@ -133,14 +133,14 @@ void planner(int* map, int collision_thresh, int x_size, int y_size, int robotpo
       if (newx >= 1 && newx <= x_size && newy >= 1 && newy <= y_size)
       {
         // Check if the new state is free
-        if ((map[GETMAPINDEX(newx, newy, x_size, y_size)] >= 0) &&
-            (map[GETMAPINDEX(newx, newy, x_size, y_size)] < collision_thresh))
+        int cell_cost = (int)map[GETMAPINDEX(newx, newy, x_size, y_size)];
+        if ((cell_cost >= 0) && (cell_cost < collision_thresh))
         {
           // Check if the new state is in the closed list
           if (!closed_list[newx][newy])
           {
             // Make a new state for the new state
-            State* new_state = new State{ newx, newy, current->g + 1, 0, current };
+            State* new_state = new State{ newx, newy, current->g + cell_cost, 0, current };
 
             // Compute the heuristic for the new state
             // TODO: use diagonal distance instead of Euclidean distance
