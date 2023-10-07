@@ -47,28 +47,27 @@ struct CompareStates
 };
 
 // Define a custom hash function for State class
-template <>
-struct std::hash<State*>
-{
-  size_t operator()(const State* s) const
-  {
-    return std::hash<int>()(s->x) ^ std::hash<int>()(s->y);
-    // return s->x * 1000 + s->y;
-  }
-};
-
-// struct StateHash
+// template<> struct std::hash<State>
 // {
-//   size_t operator()(const State* s) const
+//   size_t operator()(const State s) const noexcept
 //   {
-//     return std::hash<int>()(s->x) ^ std::hash<int>()(s->y);
-//     // return s->x * 1000 + s->y;
+//     return std::hash<int>()(s.x) ^ std::hash<int>()(s.y);
+//     // return s->x * 5000 + s->y;
 //   }
 // };
 
+struct StateHash
+{
+  size_t operator()(const State s) const
+  {
+    return std::hash<int>()(s.x) ^ std::hash<int>()(s.y);
+    // return s->x * 5000 + s->y;
+  }
+};
+
 // Create an unordered set to store the states in the open list
-// std::unordered_set<State*, StateHash> open_set;
-std::unordered_set<State*> open_set;
+std::unordered_set<State, StateHash> open_set;
+// std::unordered_set<State, std::hash<State>> open_set;
 
 static int flag = 0;
 
@@ -90,13 +89,13 @@ void planner(int* map, int collision_thresh, int x_size, int y_size, int robotpo
   std::vector<std::vector<bool>> closed_list(x_size, std::vector<bool>(y_size, false));
 
   // Initialize the start state just once
-  static State* start = new State{ 0, 0, 0, 0, nullptr };  // TODO: this should only be done once?
+  static State* start = new State{ 0, 0, 0, 0, nullptr };
   if (flag == 0)
   {
     start->x = robotposeX;
     start->y = robotposeY;
     open_list.push(start);
-    open_set.insert(start);
+    open_set.insert(*start);
     flag = 1;
   }
 
@@ -108,6 +107,7 @@ void planner(int* map, int collision_thresh, int x_size, int y_size, int robotpo
   auto get_action = [&] {
     if (robot_traj.empty())
     {
+      std::cout << "robot_traj empty" << std::endl;
       int newx = robotposeX;
       int newy = robotposeY;
       action_ptr[0] = newx;
@@ -140,6 +140,7 @@ void planner(int* map, int collision_thresh, int x_size, int y_size, int robotpo
 
   if (is_planning_done)
   {
+    std::cout << "getting action" << std::endl;
     get_action();
     return;
   }
@@ -149,14 +150,13 @@ void planner(int* map, int collision_thresh, int x_size, int y_size, int robotpo
     // Pop the state with the lowest cost from the open list
     State* current = open_list.top();
     open_list.pop();
-    // std::cout << "current: " << current->x << " " << current->y << std::endl;
-    std::cout << "size: " << open_list.size() << std::endl;
+    std::cout << "current: " << current->x << " " << current->y << std::endl;
     // Add the current state to the closed list
     closed_list[current->x][current->y] = true;  // FIXME: Indexing is incorrect here?
-
     // Check if the current state is the goal state
     if (current->x == goal->x && current->y == goal->y)
     {
+      std::cout << "Found plan!" << std::endl;
       is_planning_done = true;
       backtrack_path(current);
       get_action();
@@ -180,34 +180,35 @@ void planner(int* map, int collision_thresh, int x_size, int y_size, int robotpo
           if (!closed_list[newx][newy])
           {
             // Make a new state for the new state
-            State* new_state = new State{ newx, newy, current->g + cell_cost, 0, current };
+            State new_state = State{ newx, newy, current->g + cell_cost, 0, current };
 
             // Compute the heuristic for the new state. Diagonal distance is used here.
-            new_state->h = MAX(abs(new_state->x - goal->x), abs(new_state->y - goal->y));
+            new_state.h = MAX(abs(new_state.x - goal->x), abs(new_state.y - goal->y));
 
             // Check if the new state is in the open list
             bool in_open_list = open_set.find(new_state) != open_set.end();
             if (in_open_list)
             {
               std::cout << "in open list" << std::endl;
+              std::cout << "new_state: " << new_state.x << " " << new_state.y << std::endl;
               // If the new state is in the open list, update the cost and parent if necessary
-              State* existing_state = *open_set.find(new_state);
-              if (new_state->g < existing_state->g)
+              State existing_state = *open_set.find(new_state);
+              if (new_state.g < existing_state.g)
               {
-                existing_state->g = new_state->g;
-                existing_state->parent = new_state->parent;
+                existing_state.g = new_state.g;
+                existing_state.parent = new_state.parent;
               }
             }
             else
             {
               // Add the new state to the open list and the open set
-              open_list.push(new_state);
+              open_list.push(&new_state);
               open_set.insert(new_state);
             }
           }
         }
       }
     }
+    std::cout << "open_list size: " << open_list.size() << std::endl;
   }
-  // return;
 }
