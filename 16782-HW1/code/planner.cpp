@@ -66,7 +66,7 @@ struct StateHash
 };
 
 // Create an unordered set to store the states in the open list
-std::unordered_set<State, StateHash> open_set;
+// std::unordered_set<State, StateHash> open_set;
 // std::unordered_set<State, std::hash<State>> open_set;
 
 static int flag = 0;
@@ -83,10 +83,12 @@ void planner(int* map, int collision_thresh, int x_size, int y_size, int robotpo
              int* target_traj, int targetposeX, int targetposeY, int curr_time, int* action_ptr)
 {
   // Create an open list (priority queue) for states to explore
-  std::priority_queue<State*, std::vector<State*>, CompareStates> open_list;
+  static std::priority_queue<State*, std::vector<State*>, CompareStates> open_list;
 
   // Create a closed list to keep track of explored states
-  std::vector<std::vector<bool>> closed_list(x_size, std::vector<bool>(y_size, false));
+  static std::vector<std::vector<bool>> closed_list(x_size, std::vector<bool>(y_size, false));
+
+  static std::unordered_set<State, StateHash> open_set;
 
   // Initialize the start state just once
   static State* start = new State{ 0, 0, 0, 0, nullptr };
@@ -103,6 +105,8 @@ void planner(int* map, int collision_thresh, int x_size, int y_size, int robotpo
   int goalposeX = target_traj[target_steps - 1];
   int goalposeY = target_traj[target_steps - 1 + target_steps];
   State* goal = new State{ goalposeX, goalposeY, 0, 0, nullptr };
+  // print goal x and y
+  // std::cout << "goal: " << goal->x << " " << goal->y << std::endl;
 
   auto get_action = [&] {
     if (robot_traj.empty())
@@ -123,6 +127,9 @@ void planner(int* map, int collision_thresh, int x_size, int y_size, int robotpo
     std::cout << "action: " << action_ptr[0] << " " << action_ptr[1] << std::endl;
     return;
   };
+
+  action_ptr[0] = robotposeX;
+  action_ptr[1] = robotposeY;
 
   // Lambda function to backtrack the optimal path
   auto backtrack_path = [&](State* goal) {
@@ -145,14 +152,30 @@ void planner(int* map, int collision_thresh, int x_size, int y_size, int robotpo
     return;
   }
 
+  // State* test_current = open_list.top();
+  // if (test_current->x == goal->x && test_current->y == goal->y)
+  // {
+  //   std::cout << "Found plan!" << std::endl;
+  //   is_planning_done = true;
+  //   backtrack_path(test_current);
+  //   get_action();
+  //   return;
+  // }
+
   while (!open_list.empty())
   {
     // Pop the state with the lowest cost from the open list
     State* current = open_list.top();
     open_list.pop();
+    open_set.erase(*current);
+
+    // print x and y in current
     std::cout << "current: " << current->x << " " << current->y << std::endl;
+
+    // std::cout << "current: " << current->x << " " << current->y << std::endl;
     // Add the current state to the closed list
-    closed_list[current->x][current->y] = true;  // FIXME: Indexing is incorrect here?
+    closed_list[current->x - 1][current->y - 1] = true;  // FIXME: Indexing is incorrect here?
+    // closed_list[current->x ][current->y] = true;  // FIXME: Indexing is incorrect here?
     // Check if the current state is the goal state
     if (current->x == goal->x && current->y == goal->y)
     {
@@ -176,27 +199,48 @@ void planner(int* map, int collision_thresh, int x_size, int y_size, int robotpo
         int cell_cost = (int)map[GETMAPINDEX(newx, newy, x_size, y_size)];
         if ((cell_cost >= 0) && (cell_cost < collision_thresh))
         {
+          // print cell cost
+          // std::cout << "cell cost: " << cell_cost << std::endl;
           // Check if the new state is in the closed list
-          if (!closed_list[newx][newy])
+          if (!closed_list[newx - 1][newy - 1])
+          // if (!closed_list[newx][newy])
           {
             // Make a new state for the new state
             State new_state = State{ newx, newy, current->g + cell_cost, 0, current };
 
             // Compute the heuristic for the new state. Diagonal distance is used here.
             new_state.h = MAX(abs(new_state.x - goal->x), abs(new_state.y - goal->y));
+            // new_state.h = sqrt(pow((new_state.x - goal->x),2) + pow((new_state.y - goal->y),2));
 
             // Check if the new state is in the open list
             bool in_open_list = open_set.find(new_state) != open_set.end();
             if (in_open_list)
             {
-              std::cout << "in open list" << std::endl;
-              std::cout << "new_state: " << new_state.x << " " << new_state.y << std::endl;
+              // std::cout << "in open list" << std::endl;
+              // std::cout << "new_state: " << new_state.x << " " << new_state.y << std::endl;
               // If the new state is in the open list, update the cost and parent if necessary
               State existing_state = *open_set.find(new_state);
+              // print x and y in existing state
+              // std::cout << "existing_state: " << existing_state.x << " " << existing_state.y << std::endl;
+
+              // print g and h
+              // std::cout << "Before g: " << existing_state.g << " h: " << existing_state.h << std::endl;
+              // // print g and h of new state
+              // std::cout << "new_state g: " << new_state.g << " h: " << new_state.h << std::endl;
               if (new_state.g < existing_state.g)
               {
                 existing_state.g = new_state.g;
                 existing_state.parent = new_state.parent;
+                // {
+                //   // State test_state = *open_set.find(new_state);
+                //   // print g and h
+                //   // std::cout << "After g: " << test_state.g << " h: " << test_state.h << std::endl;
+                //   // std::cout << "------------------------------\n";
+                // }
+                open_set.erase(existing_state);
+                open_set.insert(new_state);
+                //  find an update new_state in open_list
+                open_list.push(&new_state);
               }
             }
             else
@@ -209,6 +253,6 @@ void planner(int* map, int collision_thresh, int x_size, int y_size, int robotpo
         }
       }
     }
-    std::cout << "open_list size: " << open_list.size() << std::endl;
+    // std::cout << "open_list size: " << open_list.size() << std::endl;
   }
 }
