@@ -51,6 +51,9 @@ int dY[NUMOFDIRS] = { -1, 0, 1, -1, 1, -1, 0, 1 };
 std::vector<std::pair<int, int>> robot_traj;
 static bool is_planning_done = false;
 
+bool replanning_needed = false;
+bool ignore_cell_cost = false;
+
 void planner(int* map, int collision_thresh, int x_size, int y_size, int robotposeX, int robotposeY, int target_steps,
              int* target_traj, int targetposeX, int targetposeY, int curr_time, int* action_ptr)
 {
@@ -104,7 +107,6 @@ void planner(int* map, int collision_thresh, int x_size, int y_size, int robotpo
   auto backtrack_path = [&](State goal) {
     // Backtrack to extract the optimal path
     State temp = goal;
-    // std::cout << "backtrack_path" << std::endl;
     while (temp.parent != nullptr)
     {
       // store the whole path in a desired robot trajectory
@@ -122,6 +124,24 @@ void planner(int* map, int collision_thresh, int x_size, int y_size, int robotpo
 
   while (!open_list.empty())
   {
+    if (replanning_needed)
+    {
+      std::cout << "Replanning needed" << std::endl;
+      // Clear the open list, closed list, open list state, and robot trajectory
+      std::priority_queue<State, std::vector<State>, CompareStates> emptyQueue;
+      std::swap(open_list, emptyQueue);
+      start.g = 0;
+      start.h = 0;
+      open_list.push(start);
+      open_list_state[robotposeX - 1][robotposeY - 1] = start;
+      std::vector<std::vector<bool>> new_closed_list(x_size, std::vector<bool>(y_size, false));
+      closed_list.swap(new_closed_list);
+      std::vector<std::vector<State>> new_open_list_state(x_size, std::vector<State>(y_size));
+      open_list_state.swap(new_open_list_state);
+      robot_traj.clear();
+      replanning_needed = false;
+      ignore_cell_cost = true;
+    }
     // Pop the state with the lowest cost from the open list
     State current = open_list.top();
     open_list.pop();
@@ -133,8 +153,19 @@ void planner(int* map, int collision_thresh, int x_size, int y_size, int robotpo
     {
       is_planning_done = true;
       backtrack_path(current);
-      get_action();
-      break;
+      if (robot_traj.size() > target_steps)
+      {
+        std::cout << "Robot trajectory size is greater than target trajectory size" << std::endl;
+        replanning_needed = true;
+        is_planning_done = false;
+        break;
+      }
+      if (!replanning_needed)
+      {
+        // std::cout << "calling get_action" << std::endl;
+        get_action();
+        break;
+      }
     }
 
     // Expand the current state
@@ -153,7 +184,12 @@ void planner(int* map, int collision_thresh, int x_size, int y_size, int robotpo
           if (!closed_list[newx - 1][newy - 1])
           {
             // Make a new state for the new state
+            if (ignore_cell_cost)
+            {
+              cell_cost = -current.g;
+            }
             State new_state = State{ newx, newy, current.g + cell_cost, 0, nullptr };
+            std::cout << "new_state.g: " << new_state.g << std::endl;
             new_state.parent = &open_list_state[current.x - 1][current.y - 1];
 
             // Compute the heuristic for the new state. Diagonal distance is used here.
