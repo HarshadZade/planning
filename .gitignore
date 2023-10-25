@@ -1,2 +1,7 @@
 .vscode/
 16782-HW1/code/temp
+.*
+16782-HW1/visualizer.py
+16782-HW1/planner.cpp
+16782-HW1/planner.h
+16782-HW1/hvz.zip
