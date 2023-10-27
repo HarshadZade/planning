@@ -317,8 +317,8 @@ int IsValidArmConfiguration(double* angles, int numofDOFs, double* map, int x_si
 //                                                                                                                   //
 //*******************************************************************************************************************//
 
-static void planner(double* map, int x_size, int y_size, double* armstart_anglesV_rad, double* armgoal_anglesV_rad,
-                    int numofDOFs, double*** plan, int* planlength)
+bool valid_edge(double* map, int x_size, int y_size, double* armstart_anglesV_rad, double* armgoal_anglesV_rad,
+                int numofDOFs, double*** plan, int* planlength)
 {
   // no plan by default
   *plan = NULL;
@@ -351,13 +351,14 @@ static void planner(double* map, int x_size, int y_size, double* armstart_angles
     }
     if (!IsValidArmConfiguration((*plan)[i], numofDOFs, map, x_size, y_size) && firstinvalidconf)
     {
+      return false;
       firstinvalidconf = 1;
       printf("ERROR: Invalid arm configuration!!!\n");
     }
   }
   *planlength = numofsamples;
 
-  return;
+  return true;
 }
 
 //*******************************************************************************************************************//
@@ -453,11 +454,134 @@ static void plannerRRT(double* map, int x_size, int y_size, double* armstart_ang
 //                                                                                                                   //
 //*******************************************************************************************************************//
 
+double computeDistance(std::vector<double> config1, std::vector<double> config2)
+{
+  double dist = 0;
+  for (int j = 0; j < config1.size(); j++)
+  {
+    dist += pow(config1[j] - config2[j], 2);
+  }
+  return sqrt(dist) / config1.size();
+}
+
+size_t findNearestNode(std::vector<std::vector<double>> tree, std::vector<double> rand_config)
+{
+  double min_dist = std::numeric_limits<double>::max();
+  int nearest_node_idx = -1;
+  for (int i = 0; i < tree.size(); i++)
+  {
+    double dist = computeDistance(tree[i], rand_config);
+    if (dist < min_dist)
+    {
+      min_dist = dist;
+      nearest_node_idx = i;
+    }
+  }
+  return nearest_node_idx;
+}
+
+std::vector<double> extend(std::vector<double> nearest_node, std::vector<double> rand_config, double step_size)
+{
+  std::vector<double> new_config(nearest_node.size());
+  for (int j = 0; j < nearest_node.size(); j++)
+  {
+    new_config[j] = nearest_node[j] + step_size * (rand_config[j] - nearest_node[j]) /
+                                          sqrt(pow(rand_config[j] - nearest_node[j], 2) + pow(step_size, 2));
+  }
+  return new_config;
+}
+
+// connect function keeps calling the extend function to connect the nearest node in the goal tree to the current node
+// until the current node is reached or there is a collision
+bool connect(std::vector<std::vector<double>>& tree, std::vector<double> nearest_node, std::vector<double> new_node,
+             double step_size, int numofDOFs, double* map, int x_size, int y_size)
+{
+  while (true)
+  {
+    std::vector<double> new_config = extend(nearest_node, new_node, step_size);
+    if (!IsValidArmConfiguration(new_config.data(), numofDOFs, map, x_size, y_size))
+    {
+      std::cout << "Collision detected!" << std::endl;
+      return false;
+    }
+    tree.push_back(new_config);
+    if (computeDistance(new_config, new_node) < step_size)
+    {
+      std::cout << "Both trees are connected!" << std::endl;
+      return true;
+    }
+    nearest_node = new_config;
+  }
+}
+
 static void plannerRRTConnect(double* map, int x_size, int y_size, double* armstart_anglesV_rad,
                               double* armgoal_anglesV_rad, int numofDOFs, double*** plan, int* planlength)
 {
-  /* TODO: Replace with your implementation */
-  planner(map, x_size, y_size, armstart_anglesV_rad, armgoal_anglesV_rad, numofDOFs, plan, planlength);
+  int max_iter = 10000;
+  double step_size = 0.5;
+  std::vector<std::vector<double>> tree_start;
+  tree_start.push_back(std::vector<double>(armstart_anglesV_rad, armstart_anglesV_rad + numofDOFs));
+  std::vector<std::vector<double>> tree_goal;
+  tree_goal.push_back(std::vector<double>(armgoal_anglesV_rad, armgoal_anglesV_rad + numofDOFs));
+
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_real_distribution<> dis(0, 1);
+
+  for (int iteration = 0; iteration < max_iter; iteration++)
+  {
+    std::cout << iteration << std::endl;
+    vector<double> rand_config(numofDOFs);
+    for (int j = 0; j < numofDOFs; j++)
+    {
+      // rand_config[j] = dis(gen) * 2 * PI;
+      rand_config[j] = ((double)rand() / RAND_MAX) * 2 * PI;
+    }
+
+    // Find nearest node
+    size_t nearest_node_idx_start = findNearestNode(tree_start, rand_config);
+    std::vector<double> nearest_node_start = extend(tree_start[nearest_node_idx_start], rand_config, step_size);
+
+    // Check if new node is valid
+    if (IsValidArmConfiguration(nearest_node_start.data(), numofDOFs, map, x_size, y_size))
+    {
+      tree_start.push_back(nearest_node_start);
+      // find the nearest node in the goal tree
+      size_t nearest_node_idx_goal = findNearestNode(tree_goal, nearest_node_start);
+      std::vector<double> nearest_node_goal = tree_goal[nearest_node_idx_goal];
+      // connect the nearest node in the goal tree to the current node
+      if (connect(tree_goal, nearest_node_goal, nearest_node_start, step_size, numofDOFs, map, x_size, y_size))
+      {
+        // Build the plan by backtracking through the tree
+        *planlength = tree_start.size() + tree_goal.size();
+        *plan = (double**)malloc((*planlength) * sizeof(double*));
+        for (int i = 0; i < tree_start.size(); i++)
+        {
+          (*plan)[i] = (double*)malloc(numofDOFs * sizeof(double));
+          for (int j = 0; j < numofDOFs; j++)
+          {
+            (*plan)[i][j] = tree_start[i][j];
+          }
+        }
+        for (int i = 0; i < tree_goal.size(); i++)
+        {
+          (*plan)[i + tree_start.size()] = (double*)malloc(numofDOFs * sizeof(double));
+          for (int j = 0; j < numofDOFs; j++)
+          {
+            (*plan)[i + tree_start.size()][j] = tree_goal[tree_goal.size() - 1 - i][j];
+          }
+        }
+        // if iteration is even, then just return the plan
+        // if iteration is odd, then reverse the plan
+        if (iteration % 2 == 1)
+        {
+          std::reverse(*plan, *plan + *planlength);
+        }
+        return;
+      }
+    }
+    std::swap(tree_start, tree_goal);
+  }
 }
 
 //*******************************************************************************************************************//
