@@ -383,8 +383,8 @@ static void plannerRRT(double* map, int x_size, int y_size, double* armstart_ang
     vector<double> rand_config(numofDOFs);
     for (int j = 0; j < numofDOFs; j++)
     {
-      // rand_config[j] = dis(gen) * 2 * PI;
-      rand_config[j] = ((double)rand() / RAND_MAX) * 2 * PI;
+      rand_config[j] = dis(gen) * 2 * PI;
+      // rand_config[j] = ((double)rand() / RAND_MAX) * 2 * PI;
     }
 
     // Find nearest node
@@ -409,7 +409,10 @@ static void plannerRRT(double* map, int x_size, int y_size, double* armstart_ang
     vector<double> new_config(numofDOFs);
     for (int j = 0; j < numofDOFs; j++)
     {
-      new_config[j] = tree[nearest_node_idx][j] + step_size * (rand_config[j] - tree[nearest_node_idx][j]) / min_dist;
+      // new_config[j] = tree[nearest_node_idx][j] + step_size * (rand_config[j] - tree[nearest_node_idx][j]) / min_dist;
+      new_config[j] = tree[nearest_node_idx][j] + step_size * (rand_config[j] - tree[nearest_node_idx][j]) /
+                                                      sqrt(pow(rand_config[j] - tree[nearest_node_idx][j], 2) +
+                                                           pow(min_dist, 2));
     }
 
     // Check if new node is valid
