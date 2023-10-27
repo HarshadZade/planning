@@ -604,6 +604,18 @@ static void plannerRRTConnect(double* map, int x_size, int y_size, double* armst
       {
         swap++;
         tree_start[new_config].parent = nearest_node;
+        // print new config and its parent
+        std::cout << "new config:";
+        for (int i = 0; i < numofDOFs; i++)
+        {
+          std::cout << new_config[i] << " ";
+        }
+        std::cout << std::endl;
+        std::cout << "parent:";
+        for (int i = 0; i < numofDOFs; i++)
+        {
+          std::cout << tree_start[new_config].parent[i] << " ";
+        }
         std::vector<double> nearest_node_goal = findNearestNode(tree_goal, new_config);
         // connect the nearest node in the goal tree to the current node
         if (connect(tree_goal, nearest_node_goal, new_config, step_size, numofDOFs, map, x_size, y_size))
@@ -613,7 +625,7 @@ static void plannerRRTConnect(double* map, int x_size, int y_size, double* armst
           // Build the plan by backtracking through the tree
           std::vector<std::vector<double>> plan_vec;
           std::vector<double> current_node = new_config;
-          while (current_node != armstart_anglesV_rad_vec)
+          while (current_node != tree_start[armstart_anglesV_rad_vec].parent)
           {
             std::cout << "tracing start tree" << std::endl;
             plan_vec.push_back(current_node);
@@ -623,7 +635,7 @@ static void plannerRRTConnect(double* map, int x_size, int y_size, double* armst
           std::reverse(plan_vec.begin(), plan_vec.end());
           current_node = tree_goal[new_config].parent;
           std::cout << "current node: " << current_node[0] << std::endl;
-          while (current_node != armgoal_anglesV_rad_vec)
+          while (current_node != tree_goal[armgoal_anglesV_rad_vec].parent)
           {
             std::cout << "tracing goal tree" << std::endl;
             plan_vec.push_back(current_node);
@@ -640,7 +652,7 @@ static void plannerRRTConnect(double* map, int x_size, int y_size, double* armst
               (*plan)[i][j] = plan_vec[i][j];
             }
           }
-          if (swap % 2 == 0)
+          if (swap % 2 == 1)
           {
             std::reverse(*plan, *plan + *planlength);
           }
