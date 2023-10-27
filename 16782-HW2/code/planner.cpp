@@ -377,7 +377,7 @@ bool isValidEdge(double* map, int x_size, int y_size, double* armstart_anglesV_r
   int numofsamples = (int)(distance / (PI / 20));
   if (numofsamples < 2)
   {
-    printf("the arm is already at the goal\n");
+    // printf("the arm is already at the goal\n");
     return true;
   }
   vector<vector<double>> plan_vec = vector<vector<double>>(numofsamples, vector<double>(numofDOFs));
@@ -450,11 +450,24 @@ std::vector<double> findNearestNode(std::unordered_map<std::vector<double>, node
   return nearest_node;
 }
 
+std::vector<double> extend(std::vector<double> nearest_node, std::vector<double> rand_config, double step_size)
+{
+  std::vector<double> new_config(nearest_node.size());
+  for (int j = 0; j < nearest_node.size(); j++)
+  {
+    new_config[j] = nearest_node[j] + step_size * (rand_config[j] - nearest_node[j]) /
+                                          sqrt(pow(rand_config[j] - nearest_node[j], 2) + pow(step_size, 2));
+  }
+  return new_config;
+}
+
 static void plannerRRT(double* map, int x_size, int y_size, double* armstart_anglesV_rad, double* armgoal_anglesV_rad,
                        int numofDOFs, double*** plan, int* planlength)
 {
-  int max_iter = 200000;
+  int max_iter = 20000;
   double step_size = 0.5;
+  // int max_iter = 20000;
+  // double step_size = 0.2;
   std::vector<double> armstart_anglesV_rad_vec(armstart_anglesV_rad, armstart_anglesV_rad + numofDOFs);
   std::vector<double> armgoal_anglesV_rad_vec(armgoal_anglesV_rad, armgoal_anglesV_rad + numofDOFs);
   // tree is an unordered_map with key as the node and value as the parent node
@@ -478,12 +491,7 @@ static void plannerRRT(double* map, int x_size, int y_size, double* armstart_ang
     std::vector<double> nearest_node = findNearestNode(tree, rand_config);
 
     // Extend towards random node
-    vector<double> new_config(numofDOFs);
-    for (int j = 0; j < numofDOFs; j++)
-    {
-      new_config[j] = nearest_node[j] + step_size * (rand_config[j] - nearest_node[j]) /
-                                            sqrt(pow(rand_config[j] - nearest_node[j], 2) + pow(step_size, 2));
-    }
+    std::vector<double> new_config = extend(nearest_node, rand_config, step_size);
 
     // Check if new node is valid
     if (IsValidArmConfiguration(new_config.data(), numofDOFs, map, x_size, y_size))
@@ -493,7 +501,8 @@ static void plannerRRT(double* map, int x_size, int y_size, double* armstart_ang
         tree[new_config].parent = nearest_node;
         // Check if new node is close to goal
         double dist = computeDistance(new_config, armgoal_anglesV_rad_vec);
-        if (dist < step_size)
+        if (dist < step_size &&
+            isValidEdge(map, x_size, y_size, new_config.data(), armgoal_anglesV_rad_vec.data(), numofDOFs))
         {
           tree[armgoal_anglesV_rad_vec].parent = new_config;
           // Build the plan by backtracking through the tree
@@ -529,17 +538,6 @@ static void plannerRRT(double* map, int x_size, int y_size, double* armstart_ang
 //                                                                                                                   //
 //*******************************************************************************************************************//
 
-std::vector<double> extend(std::vector<double> nearest_node, std::vector<double> rand_config, double step_size)
-{
-  std::vector<double> new_config(nearest_node.size());
-  for (int j = 0; j < nearest_node.size(); j++)
-  {
-    new_config[j] = nearest_node[j] + step_size * (rand_config[j] - nearest_node[j]) /
-                                          sqrt(pow(rand_config[j] - nearest_node[j], 2) + pow(step_size, 2));
-  }
-  return new_config;
-}
-
 // connect function keeps calling the extend function to connect the nearest node in the goal tree to the current node
 // until the current node is reached or there is a collision
 bool connect(std::unordered_map<std::vector<double>, node, node_hash>& tree, std::vector<double> nearest_node,
@@ -570,6 +568,8 @@ static void plannerRRTConnect(double* map, int x_size, int y_size, double* armst
 {
   int max_iter = 10000;
   double step_size = 0.5;
+  // int max_iter = 20000;
+  // double step_size = 0.2;
   std::vector<double> armstart_anglesV_rad_vec(armstart_anglesV_rad, armstart_anglesV_rad + numofDOFs);
   std::vector<double> armgoal_anglesV_rad_vec(armgoal_anglesV_rad, armgoal_anglesV_rad + numofDOFs);
   // tree is an unordered_map with key as the node and value as the parent node
@@ -652,16 +652,223 @@ static void plannerRRTConnect(double* map, int x_size, int y_size, double* armst
 //                                                                                                                   //
 //*******************************************************************************************************************//
 
+struct node_star
+{
+  std::vector<double> parent;
+  double cost;
+};
+
+typedef std::shared_ptr<node_star> node_star_ptr;
+
+// Function to find the nearest node in the tree to a given node
+std::vector<double> findNearestNodestar(std::unordered_map<std::vector<double>, node_star_ptr, node_hash> tree,
+                                        std::vector<double> rand_config)
+{
+  double min_dist = std::numeric_limits<double>::max();
+  std::vector<double> nearest_node;
+  for (const auto& temp : tree)
+  {
+    double dist = computeDistance(temp.first, rand_config);
+    if (dist < min_dist)
+    {
+      min_dist = dist;
+      nearest_node = temp.first;
+    }
+  }
+  return nearest_node;
+}
+
+// FUnction to find all the nodes in the tree that are within a certain neighborhood radius of the new node
+std::vector<std::vector<double>> findNear(std::unordered_map<std::vector<double>, node_star, node_hash> tree,
+                                          std::vector<double> new_node, double neighborhood_radius)
+{
+  std::vector<std::vector<double>> near_nodes;
+  for (const auto& temp : tree)
+  {
+    double dist = computeDistance(temp.first, new_node);
+    if (dist < neighborhood_radius)
+    {
+      near_nodes.push_back(temp.first);
+    }
+  }
+  return near_nodes;
+}
+
+bool isValidEdgestar(double* map, int x_size, int y_size, const double* armstart_anglesV_rad,
+                     const double* armgoal_anglesV_rad, int numofDOFs)
+{
+  // for now just do straight interpolation between start and goal checking for the validity of samples
+
+  double distance = 0;
+  int i, j;
+  for (j = 0; j < numofDOFs; j++)
+  {
+    if (distance < fabs(armstart_anglesV_rad[j] - armgoal_anglesV_rad[j]))
+      distance = fabs(armstart_anglesV_rad[j] - armgoal_anglesV_rad[j]);
+  }
+  int numofsamples = (int)(distance / (PI / 20));
+  if (numofsamples < 2)
+  {
+    // printf("the arm is already at the goal\n");
+    return true;
+  }
+  vector<vector<double>> plan_vec = vector<vector<double>>(numofsamples, vector<double>(numofDOFs));
+  for (i = 0; i < numofsamples; i++)
+  {
+    for (j = 0; j < numofDOFs; j++)
+    {
+      plan_vec[i][j] = armstart_anglesV_rad[j] +
+                       ((double)(i) / (numofsamples - 1)) * (armgoal_anglesV_rad[j] - armstart_anglesV_rad[j]);
+    }
+    if (!IsValidArmConfiguration(plan_vec[i].data(), numofDOFs, map, x_size, y_size))
+    {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Function to rewrire the tree with the new node for all the nodes that are within a certain neighborhood radius
+// take the neighborhood radius as a parameter
+void rewire(std::unordered_map<std::vector<double>, node_star_ptr, node_hash>& tree, std::vector<double> new_node,
+            double step_size, int numofDOFs, double* map, int x_size, int y_size, double neighborhood_radius)
+// ---------------------------------------------------------------------------------------------------
+// TODO: !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!NEEDS TO BE OPTIMIZED!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// ---------------------------------------------------------------------------------------------------
+{
+  for (const auto& temp : tree)
+  {
+    // if temp is the parent of the new node, then skip
+    if (temp.first == tree[new_node]->parent)
+    {
+      continue;
+    }
+    double dist = computeDistance(temp.first, new_node);
+    if (dist < neighborhood_radius)
+    {
+      if (isValidEdgestar(map, x_size, y_size, temp.first.data(), new_node.data(), numofDOFs))
+      {
+        auto new_cost = tree[temp.first]->cost + dist;
+        if (tree[new_node]->cost > new_cost)
+        {
+          tree[new_node]->parent = temp.first;
+          tree[new_node]->cost = new_cost;
+        }
+      }
+    }
+  }
+  // now try to join all the nodes in the neighborhood to the new node. check if the new cost is less than the old cost
+  // if yes, then update the parent and cost of the node
+  for (const auto& temp : tree)
+  {
+    // if (tree[temp.first]->parent == new_node)
+    if (tree[new_node]->parent == temp.first)
+    {
+      continue;
+    }
+    double dist = computeDistance(temp.first, new_node);
+    if (dist < neighborhood_radius)
+    {
+      if (isValidEdgestar(map, x_size, y_size, temp.first.data(), new_node.data(), numofDOFs))
+      {
+        auto new_cost = tree[new_node]->cost + dist;
+        if (tree[temp.first]->cost > new_cost)
+        {
+          tree[temp.first]->parent = new_node;
+          tree[temp.first]->cost = new_cost;
+        }
+      }
+    }
+  }
+}
+
 static void plannerRRTStar(double* map, int x_size, int y_size, double* armstart_anglesV_rad,
                            double* armgoal_anglesV_rad, int numofDOFs, double*** plan, int* planlength)
 {
-  /* TODO: Replace with your implementation */
-  planner(map, x_size, y_size, armstart_anglesV_rad, armgoal_anglesV_rad, numofDOFs, plan, planlength);
+  int max_iter = 10000;
+  double step_size = 0.2;
+  std::vector<double> armstart_anglesV_rad_vec(armstart_anglesV_rad, armstart_anglesV_rad + numofDOFs);
+  std::vector<double> armgoal_anglesV_rad_vec(armgoal_anglesV_rad, armgoal_anglesV_rad + numofDOFs);
+  // tree is an unordered_map with key as the node and value as the parent node
+  std::unordered_map<std::vector<double>, node_star_ptr, node_hash> tree;
+  tree[armstart_anglesV_rad_vec] = std::make_shared<node_star>();
+  tree[armstart_anglesV_rad_vec]->cost = 0;
+  std::vector<double> goal_parent;
+  double goal_cost = std::numeric_limits<double>::max();
+
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_real_distribution<> dis(0, 1);
+
+  for (int iteration = 0; iteration < max_iter; iteration++)
+  {
+    vector<double> rand_config(numofDOFs);
+    for (int j = 0; j < numofDOFs; j++)
+    {
+      rand_config[j] = dis(gen) * 2 * PI;
+      // rand_config[j] = ((double)rand() / RAND_MAX) * 2 * PI;
+    }
+
+    // Find nearest node
+    std::vector<double> nearest_node = findNearestNodestar(tree, rand_config);
+
+    // Extend towards random node
+    std::vector<double> new_config = extend(nearest_node, rand_config, step_size);
+
+    // Check if new node is valid
+    if (IsValidArmConfiguration(new_config.data(), numofDOFs, map, x_size, y_size))
+    {
+      if (isValidEdgestar(map, x_size, y_size, nearest_node.data(), new_config.data(), numofDOFs))
+      {
+        tree[new_config] = std::make_shared<node_star>();
+        tree[new_config]->parent = nearest_node;
+        tree[new_config]->cost =
+            tree[nearest_node]->cost +
+            computeDistance(nearest_node, new_config);  // TODO: This distance has already
+                                                        // been computed in the findNearestNodestar function
+        // call the rewire function to rewire the tree with the new node
+        int neighborhood_radius = 10 * step_size / numofDOFs;
+        rewire(tree, new_config, step_size, numofDOFs, map, x_size, y_size, neighborhood_radius);
+        // Check if new node is close to goal
+        double dist = computeDistance(new_config, armgoal_anglesV_rad_vec);
+        if ((tree[new_config]->cost + dist < goal_cost) &&
+            (isValidEdgestar(map, x_size, y_size, new_config.data(), armgoal_anglesV_rad_vec.data(), numofDOFs)))
+        {
+          goal_parent = new_config;
+          goal_cost = tree[new_config]->cost + dist;
+        }
+      }
+    }
+  }
+  tree[armgoal_anglesV_rad_vec] = std::make_shared<node_star>();
+  tree[armgoal_anglesV_rad_vec]->parent = goal_parent;
+  tree[armgoal_anglesV_rad_vec]->cost = goal_cost;
+  // Build the plan by backtracking through the tree
+  std::vector<std::vector<double>> plan_vec;
+  std::vector<double> current_node = armgoal_anglesV_rad_vec;
+  while (current_node != armstart_anglesV_rad_vec)
+  {
+    plan_vec.push_back(current_node);
+    current_node = tree[current_node]->parent;
+  }
+  plan_vec.push_back(armstart_anglesV_rad_vec);
+  std::reverse(plan_vec.begin(), plan_vec.end());
+  *planlength = plan_vec.size();
+  *plan = (double**)malloc((*planlength) * sizeof(double*));
+  for (int i = 0; i < *planlength; i++)
+  {
+    (*plan)[i] = (double*)malloc(numofDOFs * sizeof(double));
+    for (int j = 0; j < numofDOFs; j++)
+    {
+      (*plan)[i][j] = plan_vec[i][j];
+    }
+  }
+  return;
 }
 
 //*******************************************************************************************************************//
 //                                                                                                                   //
-//                                              PRM IMPLEMENTATION                                                   //
+//                                              PRM IMPLEMENTATION //
 //                                                                                                                   //
 //*******************************************************************************************************************//
 
@@ -674,7 +881,7 @@ static void plannerPRM(double* map, int x_size, int y_size, double* armstart_ang
 
 //*******************************************************************************************************************//
 //                                                                                                                   //
-//                                                MAIN FUNCTION                                                      //
+//                                                MAIN FUNCTION //
 //                                                                                                                   //
 //*******************************************************************************************************************//
 
