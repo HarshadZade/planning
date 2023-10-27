@@ -599,7 +599,6 @@ static void plannerRRTConnect(double* map, int x_size, int y_size, double* armst
     {
       if (isValidEdge(map, x_size, y_size, nearest_node.data(), new_config.data(), numofDOFs))
       {
-        swap++;
         tree_start[new_config].parent = nearest_node;
         std::vector<double> nearest_node_goal = findNearestNode(tree_goal, new_config);
         // connect the nearest node in the goal tree to the current node
@@ -615,7 +614,6 @@ static void plannerRRTConnect(double* map, int x_size, int y_size, double* armst
             plan_vec.push_back(current_node);
             current_node = tree_start[current_node].parent;
           }
-          plan_vec.push_back(armstart_anglesV_rad_vec);
           std::reverse(plan_vec.begin(), plan_vec.end());
           current_node = tree_goal[new_config].parent;
           while (current_node != tree_goal[armgoal_anglesV_rad_vec].parent)
@@ -623,9 +621,6 @@ static void plannerRRTConnect(double* map, int x_size, int y_size, double* armst
             plan_vec_goal.push_back(current_node);
             current_node = tree_goal[current_node].parent;
           }
-          plan_vec_goal.push_back(armgoal_anglesV_rad_vec);
-          // reverse the goal tree plan
-          // std::reverse(plan_vec_goal.begin(), plan_vec_goal.end());
           plan_vec.insert(plan_vec.end(), plan_vec_goal.begin(), plan_vec_goal.end());
           *planlength = plan_vec.size();
           *plan = (double**)malloc((*planlength) * sizeof(double*));
@@ -637,9 +632,15 @@ static void plannerRRTConnect(double* map, int x_size, int y_size, double* armst
               (*plan)[i][j] = plan_vec[i][j];
             }
           }
+
+          if (swap % 2 == 1)
+          {
+            std::reverse(*plan, *plan + *planlength);
+          }
           return;
         }
         std::swap(tree_start, tree_goal);
+        swap++;
       }
     }
   }
