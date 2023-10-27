@@ -369,10 +369,8 @@ static void planner(double* map, int x_size, int y_size, double* armstart_angles
 static void plannerRRT(double* map, int x_size, int y_size, double* armstart_anglesV_rad, double* armgoal_anglesV_rad,
                        int numofDOFs, double*** plan, int* planlength)
 {
-  /* TODO: Replace with your implementation */
-  // planner(map, x_size, y_size, armstart_anglesV_rad, armgoal_anglesV_rad, numofDOFs, plan, planlength);
-  int max_iter = 10000;
-  double step_size = 0.1;
+  int max_iter = 200000;
+  double step_size = 0.5;
   std::vector<std::vector<double>> tree;
   tree.push_back(std::vector<double>(armstart_anglesV_rad, armstart_anglesV_rad + numofDOFs));
 
@@ -385,8 +383,8 @@ static void plannerRRT(double* map, int x_size, int y_size, double* armstart_ang
     vector<double> rand_config(numofDOFs);
     for (int j = 0; j < numofDOFs; j++)
     {
-      rand_config[j] = dis(gen) * 2 * PI;
-      // random_config[j] = ((double)rand() / RAND_MAX) * 2 * PI;
+      // rand_config[j] = dis(gen) * 2 * PI;
+      rand_config[j] = ((double)rand() / RAND_MAX) * 2 * PI;
     }
 
     // Find nearest node
@@ -399,7 +397,7 @@ static void plannerRRT(double* map, int x_size, int y_size, double* armstart_ang
       {
         dist += pow(tree[i][j] - rand_config[j], 2);
       }
-      dist = sqrt(dist);
+      dist = sqrt(dist) / numofDOFs;
       if (dist < min_dist)
       {
         min_dist = dist;
@@ -424,7 +422,7 @@ static void plannerRRT(double* map, int x_size, int y_size, double* armstart_ang
       {
         dist += pow(new_config[j] - armgoal_anglesV_rad[j], 2);
       }
-      dist = sqrt(dist);
+      dist = sqrt(dist) / numofDOFs;
       if (dist < step_size)
       {
         tree.push_back(std::vector<double>(armgoal_anglesV_rad, armgoal_anglesV_rad + numofDOFs));
