@@ -18,6 +18,8 @@
 #include <assert.h>
 
 #include <unordered_map>
+#include <queue>
+#include <unordered_set>
 
 /* Input Arguments */
 #define MAP_IN prhs[0]
@@ -679,8 +681,9 @@ std::vector<double> findNearestNodestar(std::unordered_map<std::vector<double>, 
 }
 
 // FUnction to find all the nodes in the tree that are within a certain neighborhood radius of the new node
-std::vector<std::vector<double>> findNear(std::unordered_map<std::vector<double>, node_star, node_hash> tree,
-                                          std::vector<double> new_node, double neighborhood_radius)
+std::vector<std::vector<double>>
+findNodesinNeighboorhood(std::unordered_map<std::vector<double>, node_star, node_hash> tree,
+                         std::vector<double> new_node, double neighborhood_radius)
 {
   std::vector<std::vector<double>> near_nodes;
   for (const auto& temp : tree)
@@ -697,8 +700,6 @@ std::vector<std::vector<double>> findNear(std::unordered_map<std::vector<double>
 bool isValidEdgestar(double* map, int x_size, int y_size, const double* armstart_anglesV_rad,
                      const double* armgoal_anglesV_rad, int numofDOFs)
 {
-  // for now just do straight interpolation between start and goal checking for the validity of samples
-
   double distance = 0;
   int i, j;
   for (j = 0; j < numofDOFs; j++)
@@ -709,7 +710,6 @@ bool isValidEdgestar(double* map, int x_size, int y_size, const double* armstart
   int numofsamples = (int)(distance / (PI / 20));
   if (numofsamples < 2)
   {
-    // printf("the arm is already at the goal\n");
     return true;
   }
   vector<vector<double>> plan_vec = vector<vector<double>>(numofsamples, vector<double>(numofDOFs));
@@ -732,9 +732,6 @@ bool isValidEdgestar(double* map, int x_size, int y_size, const double* armstart
 // take the neighborhood radius as a parameter
 void rewire(std::unordered_map<std::vector<double>, node_star_ptr, node_hash>& tree, std::vector<double> new_node,
             double step_size, int numofDOFs, double* map, int x_size, int y_size, double neighborhood_radius)
-// ---------------------------------------------------------------------------------------------------
-// TODO: !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!NEEDS TO BE OPTIMIZED!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-// ---------------------------------------------------------------------------------------------------
 {
   for (const auto& temp : tree)
   {
@@ -854,12 +851,197 @@ static void plannerRRTStar(double* map, int x_size, int y_size, double* armstart
 //                                              PRM IMPLEMENTATION //
 //                                                                                                                   //
 //*******************************************************************************************************************//
+struct PrmNode
+{
+  std::vector<std::vector<double>> neighbors;  // TODO: Add cost to the neighbors
+};
+
+typedef std::shared_ptr<PrmNode> PrmNode_Ptr;
+
+struct SearchNode
+{
+  std::vector<double> config;
+  double g_cost;
+  double h_cost;
+  SearchNode* parent;
+  bool is_in_open_list = false;
+};
+
+struct CompareSearchNode
+{
+  bool operator()(const SearchNode a, const SearchNode b) const
+  {
+    return a.g_cost + a.h_cost > b.g_cost + b.h_cost;
+  }
+};
+
+// Function to find the nearest node in the tree to a given node
+std::vector<double> findNearestNode(std::unordered_map<std::vector<double>, PrmNode_Ptr, node_hash> tree,
+                                    std::vector<double> rand_config, double* map, int x_size, int y_size, int numofDOFs)
+{
+  double min_dist = std::numeric_limits<double>::max();
+  std::vector<double> nearest_node;
+  for (const auto& temp : tree)
+  {
+    double dist = computeDistance(temp.first, rand_config);
+    if (dist < min_dist)
+    {
+      // check if the edge is valid
+      if (isValidEdgestar(map, x_size, y_size, temp.first.data(), rand_config.data(), numofDOFs))
+      {
+        // it should have at least one neighbor
+        if (tree[temp.first]->neighbors.size() > 0)
+        {
+          min_dist = dist;
+          nearest_node = temp.first;
+        }
+      }
+    }
+  }
+  return nearest_node;
+}
+
+// Function for A* search
+std::vector<std::vector<double>> AStarSearch(std::unordered_map<std::vector<double>, PrmNode_Ptr, node_hash> tree,
+                                             std::vector<double> start_node, std::vector<double> goal_node, double* map,
+                                             int x_size, int y_size, int numofDOFs)
+{
+  // Create an open list (priority queue) for states to explore
+  std::priority_queue<SearchNode, std::vector<SearchNode>, CompareSearchNode> open_list;
+  // Create a closed list for states that have been explored
+  std::unordered_map<std::vector<double>, SearchNode, node_hash> closed_list;
+  // Create a map to store all open nodes
+  std::unordered_map<std::vector<double>, SearchNode, node_hash> all_open_nodes;
+  // std::unordered_map<std::vector<double>, std::vector<double>, node_hash> path_map;
+
+  // Create a start node
+  SearchNode start;
+  start.config = start_node;
+  start.g_cost = 0;
+  start.h_cost = computeDistance(start_node, goal_node);
+  start.parent = NULL;
+  start.is_in_open_list = true;
+  open_list.push(start);
+  all_open_nodes[start_node] = start;
+  closed_list[start_node] = start;
+
+  while (!open_list.empty())
+  {
+    // Get the node with the lowest cost
+    SearchNode current_node = open_list.top();
+    open_list.pop();
+    current_node.is_in_open_list = false;
+    closed_list[current_node.config] = current_node;
+    // Check if the current node is the goal node
+    if (current_node.config == goal_node)
+    {
+      std::vector<std::vector<double>> path;
+      while (current_node.parent != NULL)
+      {
+        path.push_back(current_node.config);
+        current_node = *current_node.parent;
+      }
+      // add the start node and the goal node to the path
+      path.push_back(current_node.config);
+      std::reverse(path.begin(), path.end()); //TODO: Check if this is required.
+
+      return path;
+    }
+    // Get the neighbors of the current node
+    std::vector<std::vector<double>> neighbors = tree[current_node.config]->neighbors;
+    for (const auto& neighbor : neighbors)
+    {
+      // Check if the neighbor has been visited
+      if (closed_list.find(neighbor) == closed_list.end()) //TODO: Check if the cell in the open list as well before adding it to the open list
+      {
+        // Create a new node
+        SearchNode new_node;
+        new_node.config = neighbor;
+        new_node.g_cost =
+            current_node.g_cost +
+            computeDistance(current_node.config, neighbor);  // TODO: This cost should already be stored in the neighbor
+                                                             // as this is being computed in the PRM tree construction
+        new_node.h_cost = computeDistance(neighbor, goal_node);
+        new_node.parent = &current_node;
+
+        // Check if this configuration is already in the open list
+        if (all_open_nodes.find(neighbor) != all_open_nodes.end())
+        {
+          // Check if the new node has a lower cost than the node in the open list
+          if (new_node.g_cost > all_open_nodes[neighbor].g_cost)
+          {
+            continue;
+          }
+        }
+        // Add the new node to the open list
+        new_node.is_in_open_list = true;      
+        open_list.push(new_node);
+        all_open_nodes[neighbor] = new_node;
+      }
+    }
+  }
+}
 
 static void plannerPRM(double* map, int x_size, int y_size, double* armstart_anglesV_rad, double* armgoal_anglesV_rad,
                        int numofDOFs, double*** plan, int* planlength)
 {
-  /* TODO: Replace with your implementation */
-  planner(map, x_size, y_size, armstart_anglesV_rad, armgoal_anglesV_rad, numofDOFs, plan, planlength);
+  int max_iter = 10000;
+  double step_size = 0.5;
+  int num_samples = 1000;
+  std::vector<double> armstart_anglesV_rad_vec(armstart_anglesV_rad, armstart_anglesV_rad + numofDOFs);
+  std::vector<double> armgoal_anglesV_rad_vec(armgoal_anglesV_rad, armgoal_anglesV_rad + numofDOFs);
+  std::unordered_map<std::vector<double>, PrmNode_Ptr, node_hash> roadmap;
+
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_real_distribution<> dis(0, 1);
+
+  // Sample random configurations
+  for (int i = 0; i < num_samples; i++)
+  {
+    vector<double> rand_config(numofDOFs);
+    for (int j = 0; j < numofDOFs; j++)
+    {
+      rand_config[j] = dis(gen) * 2 * PI;
+    }
+    if (IsValidArmConfiguration(rand_config.data(), numofDOFs, map, x_size, y_size))
+    {
+      roadmap[rand_config] = std::make_shared<PrmNode>();
+      // Find neighbors // TODO: This can be optimized by using a k-d tree. //TODO: Make this a function
+      for (const auto& temp : roadmap)
+      {
+        double dist = computeDistance(temp.first, rand_config);
+        if (dist < step_size)  // FIXME: Use the proper neighborhood radius instead of step_size
+        {
+          if (isValidEdgestar(map, x_size, y_size, temp.first.data(), rand_config.data(), numofDOFs))
+          {
+            roadmap[rand_config]->neighbors.push_back(temp.first);  // TODO: Store the distance as well to get the cost
+            roadmap[temp.first]->neighbors.push_back(rand_config);
+          }
+        }
+      }
+    }
+  }
+  // find the node closest to the start position
+  std::vector<double> start_node = findNearestNode(roadmap, armstart_anglesV_rad_vec, map, x_size, y_size, numofDOFs);
+  // find the node closest to the goal position
+  std::vector<double> goal_node = findNearestNode(roadmap, armgoal_anglesV_rad_vec, map, x_size, y_size, numofDOFs);
+
+  // Now run A* to find the path between the start and goal nodes
+  std::vector<std::vector<double>> path = AStarSearch(roadmap, start_node, goal_node, map, x_size, y_size, numofDOFs);
+
+  // Convert the path to the required format
+  *planlength = path.size();
+  *plan = (double**)malloc((*planlength) * sizeof(double*));
+  for (int i = 0; i < *planlength; i++)
+  {
+    (*plan)[i] = (double*)malloc(numofDOFs * sizeof(double));
+    for (int j = 0; j < numofDOFs; j++)
+    {
+      (*plan)[i][j] = path[i][j];
+    }
+  }
+  return;
 }
 
 //*******************************************************************************************************************//
