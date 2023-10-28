@@ -748,34 +748,17 @@ void rewire(std::unordered_map<std::vector<double>, node_star_ptr, node_hash>& t
     {
       if (isValidEdgestar(map, x_size, y_size, temp.first.data(), new_node.data(), numofDOFs))
       {
-        auto new_cost = tree[temp.first]->cost + dist;
-        if (tree[new_node]->cost > new_cost)
+        auto new_node_cost = tree[temp.first]->cost + dist;
+        if (tree[new_node]->cost > new_node_cost)
         {
           tree[new_node]->parent = temp.first;
-          tree[new_node]->cost = new_cost;
+          tree[new_node]->cost = new_node_cost;
         }
-      }
-    }
-  }
-  // now try to join all the nodes in the neighborhood to the new node. check if the new cost is less than the old cost
-  // if yes, then update the parent and cost of the node
-  for (const auto& temp : tree)
-  {
-    // if (tree[temp.first]->parent == new_node)
-    if (tree[new_node]->parent == temp.first)
-    {
-      continue;
-    }
-    double dist = computeDistance(temp.first, new_node);
-    if (dist < neighborhood_radius)
-    {
-      if (isValidEdgestar(map, x_size, y_size, temp.first.data(), new_node.data(), numofDOFs))
-      {
-        auto new_cost = tree[new_node]->cost + dist;
-        if (tree[temp.first]->cost > new_cost)
+        auto temp_node_cost = tree[new_node]->cost + dist;
+        if (tree[temp.first]->cost > temp_node_cost)
         {
           tree[temp.first]->parent = new_node;
-          tree[temp.first]->cost = new_cost;
+          tree[temp.first]->cost = temp_node_cost;
         }
       }
     }
