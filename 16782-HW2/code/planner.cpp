@@ -941,10 +941,7 @@ std::vector<std::vector<double>> AStarSearch(std::unordered_map<std::vector<doub
         path.push_back(current_node.config);
         current_node = *current_node.parent;
       }
-      // add the start node and the goal node to the path
       path.push_back(current_node.config);
-      std::reverse(path.begin(), path.end()); //TODO: Check if this is required.
-
       return path;
     }
     // Get the neighbors of the current node
@@ -952,7 +949,7 @@ std::vector<std::vector<double>> AStarSearch(std::unordered_map<std::vector<doub
     for (const auto& neighbor : neighbors)
     {
       // Check if the neighbor has been visited
-      if (closed_list.find(neighbor) == closed_list.end()) //TODO: Check if the cell in the open list as well before adding it to the open list
+      if (closed_list.find(neighbor) == closed_list.end())
       {
         // Create a new node
         SearchNode new_node;
@@ -974,12 +971,17 @@ std::vector<std::vector<double>> AStarSearch(std::unordered_map<std::vector<doub
           }
         }
         // Add the new node to the open list
-        new_node.is_in_open_list = true;      
+        new_node.is_in_open_list = true;
         open_list.push(new_node);
         all_open_nodes[neighbor] = new_node;
       }
     }
   }
+  std::vector<std::vector<double>> path;
+  // add the start node and the goal node to the path
+  path.push_back(start_node);
+  path.push_back(goal_node);
+  return path;
 }
 
 static void plannerPRM(double* map, int x_size, int y_size, double* armstart_anglesV_rad, double* armgoal_anglesV_rad,
@@ -1011,12 +1013,12 @@ static void plannerPRM(double* map, int x_size, int y_size, double* armstart_ang
       for (const auto& temp : roadmap)
       {
         double dist = computeDistance(temp.first, rand_config);
-        if (dist < step_size)  // FIXME: Use the proper neighborhood radius instead of step_size
+        if (dist < (10 * step_size / numofDOFs))  // FIXME: Use the proper neighborhood radius instead of step_size
         {
           if (isValidEdgestar(map, x_size, y_size, temp.first.data(), rand_config.data(), numofDOFs))
           {
             roadmap[rand_config]->neighbors.push_back(temp.first);  // TODO: Store the distance as well to get the cost
-            roadmap[temp.first]->neighbors.push_back(rand_config);
+            roadmap[temp.first]->neighbors.push_back(rand_config);  // TODO: Check if this is needed
           }
         }
       }
@@ -1030,6 +1032,10 @@ static void plannerPRM(double* map, int x_size, int y_size, double* armstart_ang
   // Now run A* to find the path between the start and goal nodes
   std::vector<std::vector<double>> path = AStarSearch(roadmap, start_node, goal_node, map, x_size, y_size, numofDOFs);
 
+  // add the start node to the path
+  path.insert(path.begin(), armstart_anglesV_rad_vec);
+  // add the goal node to the path
+  path.push_back(armgoal_anglesV_rad_vec);
   // Convert the path to the required format
   *planlength = path.size();
   *plan = (double**)malloc((*planlength) * sizeof(double*));
