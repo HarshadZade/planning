@@ -466,10 +466,10 @@ std::vector<double> extend(std::vector<double> nearest_node, std::vector<double>
 static void plannerRRT(double* map, int x_size, int y_size, double* armstart_anglesV_rad, double* armgoal_anglesV_rad,
                        int numofDOFs, double*** plan, int* planlength)
 {
+  // int max_iter = 10000;
+  // double step_size = 0.2;
   int max_iter = 20000;
   double step_size = 0.5;
-  // int max_iter = 20000;
-  // double step_size = 0.2;
   std::vector<double> armstart_anglesV_rad_vec(armstart_anglesV_rad, armstart_anglesV_rad + numofDOFs);
   std::vector<double> armgoal_anglesV_rad_vec(armgoal_anglesV_rad, armgoal_anglesV_rad + numofDOFs);
   // tree is an unordered_map with key as the node and value as the parent node
@@ -480,12 +480,17 @@ static void plannerRRT(double* map, int x_size, int y_size, double* armstart_ang
   std::mt19937 gen(rd());
   std::uniform_real_distribution<> dis(0, 1);
 
+  std::default_random_engine generator;
+  generator.seed(2111);
+  static std::uniform_real_distribution<> random_real_generator(0, 1);
+
   for (int iteration = 0; iteration < max_iter; iteration++)
   {
     vector<double> rand_config(numofDOFs);
     for (int j = 0; j < numofDOFs; j++)
     {
-      rand_config[j] = dis(gen) * 2 * PI;
+      rand_config[j] = random_real_generator(generator) * 2 * PI;
+      // rand_config[j] = dis(gen) * 2 * PI;
       // rand_config[j] = ((double)rand() / RAND_MAX) * 2 * PI;
     }
 
@@ -532,6 +537,19 @@ static void plannerRRT(double* map, int x_size, int y_size, double* armstart_ang
       }
     }
   }
+  // add start and goal to the plan since we couldn't find a path
+  *planlength = 2;
+  *plan = (double**)malloc((*planlength) * sizeof(double*));
+  for (int i = 0; i < *planlength; i++)
+  {
+    (*plan)[i] = (double*)malloc(numofDOFs * sizeof(double));
+  }
+  for (int j = 0; j < numofDOFs; j++)
+  {
+    (*plan)[0][j] = armstart_anglesV_rad[j];
+    (*plan)[1][j] = armgoal_anglesV_rad[j];
+  }
+  return;
 }
 
 //*******************************************************************************************************************//
@@ -569,9 +587,9 @@ static void plannerRRTConnect(double* map, int x_size, int y_size, double* armst
                               double* armgoal_anglesV_rad, int numofDOFs, double*** plan, int* planlength)
 {
   int max_iter = 10000;
-  double step_size = 0.5;
+  // double step_size = 0.5;
   // int max_iter = 20000;
-  // double step_size = 0.2;
+  double step_size = 0.2;
   std::vector<double> armstart_anglesV_rad_vec(armstart_anglesV_rad, armstart_anglesV_rad + numofDOFs);
   std::vector<double> armgoal_anglesV_rad_vec(armgoal_anglesV_rad, armgoal_anglesV_rad + numofDOFs);
   // tree is an unordered_map with key as the node and value as the parent node
@@ -583,13 +601,19 @@ static void plannerRRTConnect(double* map, int x_size, int y_size, double* armst
   std::random_device rd;
   std::mt19937 gen(rd());
   std::uniform_real_distribution<> dis(0, 1);
+
+  std::default_random_engine generator;
+  generator.seed(2111);
+  static std::uniform_real_distribution<> random_real_generator(0, 1);
+
   int swap = 0;
   for (int iteration = 0; iteration < max_iter; iteration++)
   {
     vector<double> rand_config(numofDOFs);
     for (int j = 0; j < numofDOFs; j++)
     {
-      rand_config[j] = dis(gen) * 2 * PI;
+      rand_config[j] = random_real_generator(generator) * 2 * PI;
+      // rand_config[j] = dis(gen) * 2 * PI;
       // rand_config[j] = ((double)rand() / RAND_MAX) * 2 * PI;
     }
 
@@ -646,6 +670,19 @@ static void plannerRRTConnect(double* map, int x_size, int y_size, double* armst
       }
     }
   }
+  // add start and goal to the plan since we couldn't find a path
+  *planlength = 2;
+  *plan = (double**)malloc((*planlength) * sizeof(double*));
+  for (int i = 0; i < *planlength; i++)
+  {
+    (*plan)[i] = (double*)malloc(numofDOFs * sizeof(double));
+  }
+  for (int j = 0; j < numofDOFs; j++)
+  {
+    (*plan)[0][j] = armstart_anglesV_rad[j];
+    (*plan)[1][j] = armgoal_anglesV_rad[j];
+  }
+  return;
 }
 
 //*******************************************************************************************************************//
@@ -765,8 +802,11 @@ void rewire(std::unordered_map<std::vector<double>, node_star_ptr, node_hash>& t
 static void plannerRRTStar(double* map, int x_size, int y_size, double* armstart_anglesV_rad,
                            double* armgoal_anglesV_rad, int numofDOFs, double*** plan, int* planlength)
 {
-  int max_iter = 10000;
-  double step_size = 0.2;
+  // int max_iter = 10000;
+  int max_iter = 20000;
+  double step_size = 0.5;
+  // int neighborhood_radius = 10 * step_size / numofDOFs;
+  int neighborhood_radius = 0.4;
   std::vector<double> armstart_anglesV_rad_vec(armstart_anglesV_rad, armstart_anglesV_rad + numofDOFs);
   std::vector<double> armgoal_anglesV_rad_vec(armgoal_anglesV_rad, armgoal_anglesV_rad + numofDOFs);
   // tree is an unordered_map with key as the node and value as the parent node
@@ -780,12 +820,17 @@ static void plannerRRTStar(double* map, int x_size, int y_size, double* armstart
   std::mt19937 gen(rd());
   std::uniform_real_distribution<> dis(0, 1);
 
+  std::default_random_engine generator;
+  generator.seed(2111);
+  static std::uniform_real_distribution<> random_real_generator(0, 1);
+
   for (int iteration = 0; iteration < max_iter; iteration++)
   {
     vector<double> rand_config(numofDOFs);
     for (int j = 0; j < numofDOFs; j++)
     {
-      rand_config[j] = dis(gen) * 2 * PI;
+      rand_config[j] = random_real_generator(generator) * 2 * PI;
+      // rand_config[j] = dis(gen) * 2 * PI;
       // rand_config[j] = ((double)rand() / RAND_MAX) * 2 * PI;
     }
 
@@ -807,7 +852,6 @@ static void plannerRRTStar(double* map, int x_size, int y_size, double* armstart
             computeDistance(nearest_node, new_config);  // TODO: This distance has already
                                                         // been computed in the findNearestNodestar function
         // call the rewire function to rewire the tree with the new node
-        int neighborhood_radius = 10 * step_size / numofDOFs;
         rewire(tree, new_config, step_size, numofDOFs, map, x_size, y_size, neighborhood_radius);
         // Check if new node is close to goal
         double dist = computeDistance(new_config, armgoal_anglesV_rad_vec);
@@ -961,7 +1005,6 @@ std::vector<std::vector<double>> AStarSearch(std::unordered_map<std::vector<doub
                                           neighbor);  // TODO: This cost should already be stored in the neighbor
                                                       // as this is being computed in the PRM tree construction
         new_node.h_cost = computeDistance(neighbor, goal_node);
-        // new_node.parent = &current_node;
         new_node.parent = std::make_shared<SearchNode>(current_node);
         // Check if this configuration is already in the open list
         if (all_open_nodes.find(neighbor) != all_open_nodes.end())
@@ -984,7 +1027,6 @@ std::vector<std::vector<double>> AStarSearch(std::unordered_map<std::vector<doub
   // add the start node and the goal node to the path
   path.push_back(start_node);
   path.push_back(goal_node);
-  std::reverse(path.begin(), path.end());
   return path;
 }
 
@@ -993,7 +1035,9 @@ static void plannerPRM(double* map, int x_size, int y_size, double* armstart_ang
 {
   int max_iter = 10000;
   double step_size = 0.5;
-  int num_samples = 25000;
+  int num_samples = 35000;
+  double neighborhood_radius = 3 * step_size / numofDOFs;
+
   std::vector<double> armstart_anglesV_rad_vec(armstart_anglesV_rad, armstart_anglesV_rad + numofDOFs);
   std::vector<double> armgoal_anglesV_rad_vec(armgoal_anglesV_rad, armgoal_anglesV_rad + numofDOFs);
   std::unordered_map<std::vector<double>, PrmNode_Ptr, node_hash> roadmap;
@@ -1002,13 +1046,18 @@ static void plannerPRM(double* map, int x_size, int y_size, double* armstart_ang
   std::mt19937 gen(rd());
   std::uniform_real_distribution<> dis(0, 1);
 
+  std::default_random_engine generator;
+  generator.seed(2111);
+  static std::uniform_real_distribution<> random_real_generator(0, 1);
+
   // Sample random configurations
   for (int i = 0; i < num_samples; i++)
   {
     vector<double> rand_config(numofDOFs);
     for (int j = 0; j < numofDOFs; j++)
     {
-      rand_config[j] = dis(gen) * 2 * PI;
+      rand_config[j] = random_real_generator(generator) * 2 * PI;
+      // rand_config[j] = dis(gen) * 2 * PI;
     }
     if (IsValidArmConfiguration(rand_config.data(), numofDOFs, map, x_size, y_size))
     {
@@ -1017,7 +1066,7 @@ static void plannerPRM(double* map, int x_size, int y_size, double* armstart_ang
       for (const auto& temp : roadmap)
       {
         double dist = computeDistance(temp.first, rand_config);
-        if (dist < (10 * step_size / numofDOFs))  // FIXME: Use the proper neighborhood radius instead of step_size
+        if (dist < neighborhood_radius)  // FIXME: Use the proper neighborhood radius instead of step_size
         {
           if (isValidEdgestar(map, x_size, y_size, temp.first.data(), rand_config.data(), numofDOFs))
           {
