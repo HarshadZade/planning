@@ -863,7 +863,9 @@ struct SearchNode
   std::vector<double> config;
   double g_cost;
   double h_cost;
-  SearchNode* parent;
+  // SearchNode* parent;
+  std::shared_ptr<SearchNode> parent;
+  // std::vector<double> parent;
   bool is_in_open_list = false;
 };
 
@@ -912,7 +914,6 @@ std::vector<std::vector<double>> AStarSearch(std::unordered_map<std::vector<doub
   std::unordered_map<std::vector<double>, SearchNode, node_hash> closed_list;
   // Create a map to store all open nodes
   std::unordered_map<std::vector<double>, SearchNode, node_hash> all_open_nodes;
-  // std::unordered_map<std::vector<double>, std::vector<double>, node_hash> path_map;
 
   // Create a start node
   SearchNode start;
@@ -942,6 +943,7 @@ std::vector<std::vector<double>> AStarSearch(std::unordered_map<std::vector<doub
         current_node = *current_node.parent;
       }
       path.push_back(current_node.config);
+      std::reverse(path.begin(), path.end());
       return path;
     }
     // Get the neighbors of the current node
@@ -954,13 +956,13 @@ std::vector<std::vector<double>> AStarSearch(std::unordered_map<std::vector<doub
         // Create a new node
         SearchNode new_node;
         new_node.config = neighbor;
-        new_node.g_cost =
-            current_node.g_cost +
-            computeDistance(current_node.config, neighbor);  // TODO: This cost should already be stored in the neighbor
-                                                             // as this is being computed in the PRM tree construction
+        new_node.g_cost = current_node.g_cost +
+                          computeDistance(current_node.config,
+                                          neighbor);  // TODO: This cost should already be stored in the neighbor
+                                                      // as this is being computed in the PRM tree construction
         new_node.h_cost = computeDistance(neighbor, goal_node);
-        new_node.parent = &current_node;
-
+        // new_node.parent = &current_node;
+        new_node.parent = std::make_shared<SearchNode>(current_node);
         // Check if this configuration is already in the open list
         if (all_open_nodes.find(neighbor) != all_open_nodes.end())
         {
@@ -973,6 +975,7 @@ std::vector<std::vector<double>> AStarSearch(std::unordered_map<std::vector<doub
         // Add the new node to the open list
         new_node.is_in_open_list = true;
         open_list.push(new_node);
+        // print the last node added to the open list and its parent by accessing the open list
         all_open_nodes[neighbor] = new_node;
       }
     }
@@ -981,6 +984,7 @@ std::vector<std::vector<double>> AStarSearch(std::unordered_map<std::vector<doub
   // add the start node and the goal node to the path
   path.push_back(start_node);
   path.push_back(goal_node);
+  std::reverse(path.begin(), path.end());
   return path;
 }
 
@@ -989,7 +993,7 @@ static void plannerPRM(double* map, int x_size, int y_size, double* armstart_ang
 {
   int max_iter = 10000;
   double step_size = 0.5;
-  int num_samples = 1000;
+  int num_samples = 25000;
   std::vector<double> armstart_anglesV_rad_vec(armstart_anglesV_rad, armstart_anglesV_rad + numofDOFs);
   std::vector<double> armgoal_anglesV_rad_vec(armgoal_anglesV_rad, armgoal_anglesV_rad + numofDOFs);
   std::unordered_map<std::vector<double>, PrmNode_Ptr, node_hash> roadmap;
@@ -1017,7 +1021,8 @@ static void plannerPRM(double* map, int x_size, int y_size, double* armstart_ang
         {
           if (isValidEdgestar(map, x_size, y_size, temp.first.data(), rand_config.data(), numofDOFs))
           {
-            roadmap[rand_config]->neighbors.push_back(temp.first);  // TODO: Store the distance as well to get the cost
+            roadmap[rand_config]->neighbors.push_back(temp.first);  // TODO: Store the distance as well to get the
+                                                                    // cost
             roadmap[temp.first]->neighbors.push_back(rand_config);  // TODO: Check if this is needed
           }
         }
