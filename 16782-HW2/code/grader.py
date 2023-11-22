@@ -41,6 +41,7 @@ def graderMain(executablePath, gradingCSV):
     ]
     scores = []
     for aPlanner in [0, 1, 2, 3]:
+        # for aPlanner in [3]:
         print("\nTESTING " + plannerList[aPlanner] + "\n")
         for i, data in enumerate(problems):
             inputMap, startPos, goalPos = [*data]

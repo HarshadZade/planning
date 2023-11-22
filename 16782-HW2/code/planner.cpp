@@ -587,16 +587,16 @@ static void plannerRRTConnect(double* map, int x_size, int y_size, double* armst
                               double* armgoal_anglesV_rad, int numofDOFs, double*** plan, int* planlength)
 {
   int max_iter = 10000;
-  // double step_size = 0.5;
+  double step_size = 0.5;
   // int max_iter = 20000;
-  double step_size = 0.2;
+  // double step_size = 0.2;
   std::vector<double> armstart_anglesV_rad_vec(armstart_anglesV_rad, armstart_anglesV_rad + numofDOFs);
   std::vector<double> armgoal_anglesV_rad_vec(armgoal_anglesV_rad, armgoal_anglesV_rad + numofDOFs);
   // tree is an unordered_map with key as the node and value as the parent node
   std::unordered_map<std::vector<double>, node, node_hash> tree_start;
   tree_start[armstart_anglesV_rad_vec] = node();
   std::unordered_map<std::vector<double>, node, node_hash> tree_goal;
-  tree_goal[armgoal_anglesV_rad_vec] = node();  // FIXME: This might not be needed
+  tree_goal[armgoal_anglesV_rad_vec] = node();
 
   std::random_device rd;
   std::mt19937 gen(rd());
@@ -663,6 +663,8 @@ static void plannerRRTConnect(double* map, int x_size, int y_size, double* armst
           {
             std::reverse(*plan, *plan + *planlength);
           }
+          // print the size of tree by adding the size of both trees
+          std::cout << "size of tree: " << tree_start.size() + tree_goal.size() << std::endl;
           return;
         }
         std::swap(tree_start, tree_goal);
@@ -682,6 +684,8 @@ static void plannerRRTConnect(double* map, int x_size, int y_size, double* armst
     (*plan)[0][j] = armstart_anglesV_rad[j];
     (*plan)[1][j] = armgoal_anglesV_rad[j];
   }
+  // print the size of tree by adding the size of both trees
+  std::cout << "size of tree: " << tree_start.size() + tree_goal.size() << std::endl;
   return;
 }
 
@@ -1066,7 +1070,7 @@ static void plannerPRM(double* map, int x_size, int y_size, double* armstart_ang
       for (const auto& temp : roadmap)
       {
         double dist = computeDistance(temp.first, rand_config);
-        if (dist < neighborhood_radius)  // FIXME: Use the proper neighborhood radius instead of step_size
+        if (dist < neighborhood_radius)  // TODO: Use a decreasing neighborhood radius instead of step_size
         {
           if (isValidEdgestar(map, x_size, y_size, temp.first.data(), rand_config.data(), numofDOFs))
           {
