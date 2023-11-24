@@ -940,11 +940,50 @@ void print_arg_list(const list<string>& args)
 //   return true;  // All preconditions are met
 // }
 
+/// WORKING FOR FIRST TWO CASES ///
+// bool are_all_preconditions_met(
+//     const Action& action, const list<string>& grounded_args,
+//     const unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator>& current_state)
+// {
+//   const list<string>& action_args = action.get_args();  // Placeholders
+
+//   // Iterate over each precondition of the action
+//   for (const Condition& precondition : action.get_preconditions())
+//   {
+//     list<string> replaced_args;  // List to store replaced arguments
+
+//     // Replace each placeholder in the precondition with the corresponding grounded argument
+//     for (const string& precondition_arg : precondition.get_args())
+//     {
+//       auto it_action_arg = find(action_args.begin(), action_args.end(), precondition_arg);
+
+//       if (it_action_arg != action_args.end())
+//       {
+//         int index = distance(action_args.begin(), it_action_arg);
+//         auto it_ground = next(grounded_args.begin(), index);
+
+//         if (it_ground != grounded_args.end())
+//         {
+//           replaced_args.push_back(*it_ground++);  // Replace placeholder
+//         }
+//         else
+//         {
+//           cerr << "Error: Grounded argument not found for placeholder." << endl;
+//           return false;
+//         }
+//       }
+//       else
+//       {
+//         cerr << "Error: Placeholder not found in action arguments." << endl;
+//         return false;
+//       }
+//     }
+
 bool are_all_preconditions_met(
     const Action& action, const list<string>& grounded_args,
     const unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator>& current_state)
 {
-  const list<string>& action_args = action.get_args();  // Placeholders
+  const list<string>& action_args = action.get_args();  // Placeholders from the action
 
   // Iterate over each precondition of the action
   for (const Condition& precondition : action.get_preconditions())
@@ -963,24 +1002,24 @@ bool are_all_preconditions_met(
 
         if (it_ground != grounded_args.end())
         {
-          replaced_args.push_back(*it_ground++);  // Replace placeholder
+          replaced_args.push_back(*it_ground);  // Replace placeholder
         }
         else
         {
-          cerr << "Error: Grounded argument not found for placeholder." << endl;
+          cerr << "Error: Grounded argument not found for placeholder: " << precondition_arg << endl;
           return false;
         }
       }
       else
       {
-        cerr << "Error: Placeholder not found in action arguments." << endl;
-        return false;
+        // If the precondition_arg is not found in action_args, it might be a concrete value
+        replaced_args.push_back(precondition_arg);  // Use the argument as it is
       }
     }
 
-    // Check if the grounded precondition is met in the current state
-    GroundedCondition grounded_condition(precondition.get_predicate(), replaced_args, precondition.get_truth());
-    if (current_state.find(grounded_condition) == current_state.end())
+    // Create a grounded condition for the precondition and check if it's met in the current state
+    GroundedCondition grounded_precondition(precondition.get_predicate(), replaced_args, precondition.get_truth());
+    if (current_state.find(grounded_precondition) == current_state.end())
     {
       return false;  // Precondition not met
     }
@@ -988,51 +1027,6 @@ bool are_all_preconditions_met(
 
   return true;  // All preconditions are met
 }
-
-// list<GroundedCondition> ground_action_effects(const Action& action, const list<string>& grounded_args)
-// {
-//   list<GroundedCondition> grounded_effects;
-//   const list<string>& action_args = action.get_args();  // Placeholders
-
-//   // Iterate over each effect of the action
-//   for (const Condition& effect : action.get_effects())
-//   {
-//     list<string> replaced_args;  // List to store replaced arguments
-
-//     // Replace each placeholder in the effect with the corresponding grounded argument
-//     for (const string& effect_arg : effect.get_args())
-//     {
-//       auto it_action_arg = find(action_args.begin(), action_args.end(), effect_arg);
-
-//       if (it_action_arg != action_args.end())
-//       {
-//         int index = distance(action_args.begin(), it_action_arg);
-//         auto it_ground = next(grounded_args.begin(), index);
-
-//         if (it_ground != grounded_args.end())
-//         {
-//           replaced_args.push_back(*it_ground);  // Replace placeholder
-//         }
-//         else
-//         {
-//           cerr << "Error: Grounded argument not found for placeholder." << endl;
-//           // Handle error appropriately
-//         }
-//       }
-//       else
-//       {
-//         cerr << "Error: Placeholder not found in action arguments." << endl;
-//         // Handle error appropriately
-//       }
-//     }
-
-//     // Create a grounded condition for the effect (including its truth value) and add it to the list
-//     GroundedCondition grounded_effect(effect.get_predicate(), replaced_args, effect.get_truth());
-//     grounded_effects.push_back(grounded_effect);
-//   }
-
-//   return grounded_effects;
-// }
 
 list<GroundedCondition> ground_action_effects(const Action& action, const list<string>& grounded_args)
 {
