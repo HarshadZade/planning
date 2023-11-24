@@ -828,110 +828,254 @@ size_t compute_heuristic(unordered_set<GroundedCondition, GroundedConditionHashe
   return heuristic;
 }
 
-void combine_util(const unordered_set<string>& symbols, int combination_size, list<string>& temp,
-                  list<list<string>>& combinations, unordered_set<string>::const_iterator it)
+void permute_util(const unordered_set<string>& symbols, int permutation_size, list<string>& temp,
+                  list<list<string>>& permutations, unordered_set<string>& used)
 {
-  // Base condition: if the combination size is met
-  if (temp.size() == combination_size)
+  // Base condition: if the permutation size is met
+  if (temp.size() == permutation_size)
   {
-    combinations.push_back(temp);
+    permutations.push_back(temp);
     return;
   }
 
-  // Stop if no more elements can be added
-  if (it == symbols.end())
+  for (const auto& symbol : symbols)
   {
-    return;
+    // Check if the symbol has already been used in this permutation
+    if (used.find(symbol) != used.end())
+    {
+      continue;
+    }
+
+    // Include the current symbol
+    temp.push_back(symbol);
+    used.insert(symbol);
+
+    // Recursive call
+    permute_util(symbols, permutation_size, temp, permutations, used);
+
+    // Remove the symbol from the used set and exclude it from the current permutation
+    used.erase(symbol);
+    temp.pop_back();
   }
-
-  // Include the current symbol and move to the next
-  temp.push_back(*it);
-  combine_util(symbols, combination_size, temp, combinations, next(it));
-
-  // Exclude the current symbol and move to the next
-  temp.pop_back();
-  combine_util(symbols, combination_size, temp, combinations, next(it));
 }
 
-list<list<string>> generate_combinations(const unordered_set<string>& symbols, int combination_size)
+list<list<string>> generate_permutations(const unordered_set<string>& symbols, int permutation_size)
 {
-  list<list<string>> combinations;
+  list<list<string>> permutations;
   list<string> temp;
-  combine_util(symbols, combination_size, temp, combinations, symbols.begin());
-  return combinations;
+  unordered_set<string> used;
+  permute_util(symbols, permutation_size, temp, permutations, used);
+  return permutations;
 }
-
-bool is_precondition_met(
-    const Condition& precondition,
-    const unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator>& current_state,
-    const GroundedAction& grounded_action)
+void print_arg_list(const list<string>& args)
 {
-  // Replace action arguments with grounded action arguments
-  list<string> args = precondition.get_args();
-  list<string> grounded_args = grounded_action.get_arg_values();
-  auto it_ground = grounded_args.begin();
-  for (auto& arg : args)
+  for (const auto& arg : args)
   {
-    if (arg[0] == '?')  // Assuming arguments in actions start with '?'
+    cout << arg << " ";
+  }
+}
+// write a is_precondition_met function that takes a precondition, a state and a grounded action
+// the variables in the precondition should be replaced by the corresponding variables in the grounded action
+// the function should return true if the precondition is met in the state and false otherwise
+// Iterate over each precondition of the action
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// const list<string>& action_args = action.get_args();  // Placeholders
+
+// // Iterate over each precondition of the action
+// for (const Condition& precondition : action.get_preconditions())
+// {
+//   list<string> replaced_args;  // List to store replaced arguments
+
+//   // Replace each placeholder in the precondition with the corresponding grounded argument
+//   for (const string& precondition_arg : precondition.get_args())
+//   {
+//     auto it_action_arg = find(action_args.begin(), action_args.end(), precondition_arg);
+
+//     if (it_action_arg != action_args.end())
+//     {
+//       // Find the corresponding grounded argument
+//       int index = distance(action_args.begin(), it_action_arg);
+//       auto it_ground = next(args.begin(), index);
+
+//       if (it_ground != args.end())
+//       {
+//         replaced_args.push_back(*it_ground++);  // Replace placeholder
+//       }
+//       else
+//       {
+//         cerr << "Error: Grounded argument not found for placeholder." << endl;
+//       }
+//     }
+//     else
+//     {
+//       cerr << "Error: Placeholder not found in action arguments." << endl;
+//     }
+//   }
+
+//   // Print the replaced args for debugging
+//   cout << "Precondition: " << precondition << endl;
+//   cout << "Replaced Args for Precondition: ";
+//   for (const auto& arg : replaced_args)
+//   {
+//     cout << arg << " ";
+//   }
+//   cout << endl;
+// }
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// bool all_preconditions_met(
+//     const unordered_set<Condition, ConditionHasher, ConditionComparator>& preconditions,
+//     const unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator>& current_state,
+//     const GroundedAction& grounded_action)
+// {
+//   for (const Condition& precondition : preconditions)
+//   {
+//     // print the precondition
+//     cout << "Precondition: " << precondition << endl;
+//     if (!is_precondition_met(precondition, current_state, grounded_action))
+//     {
+//       return false;  // If any precondition is not met, return false
+//     }
+//   }
+//   return true;  // All preconditions are met
+// }
+
+bool are_all_preconditions_met(
+    const Action& action, const list<string>& grounded_args,
+    const unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator>& current_state)
+{
+  const list<string>& action_args = action.get_args();  // Placeholders
+
+  // Iterate over each precondition of the action
+  for (const Condition& precondition : action.get_preconditions())
+  {
+    list<string> replaced_args;  // List to store replaced arguments
+
+    // Replace each placeholder in the precondition with the corresponding grounded argument
+    for (const string& precondition_arg : precondition.get_args())
     {
-      arg = *it_ground;
-      ++it_ground;
+      auto it_action_arg = find(action_args.begin(), action_args.end(), precondition_arg);
+
+      if (it_action_arg != action_args.end())
+      {
+        int index = distance(action_args.begin(), it_action_arg);
+        auto it_ground = next(grounded_args.begin(), index);
+
+        if (it_ground != grounded_args.end())
+        {
+          replaced_args.push_back(*it_ground++);  // Replace placeholder
+        }
+        else
+        {
+          cerr << "Error: Grounded argument not found for placeholder." << endl;
+          return false;
+        }
+      }
+      else
+      {
+        cerr << "Error: Placeholder not found in action arguments." << endl;
+        return false;
+      }
+    }
+
+    // Check if the grounded precondition is met in the current state
+    GroundedCondition grounded_condition(precondition.get_predicate(), replaced_args, precondition.get_truth());
+    if (current_state.find(grounded_condition) == current_state.end())
+    {
+      return false;  // Precondition not met
     }
   }
 
-  GroundedCondition gc(precondition.get_predicate(), args, precondition.get_truth());
-
-  // Check if the grounded condition is in the current state
-  return current_state.find(gc) != current_state.end();
+  return true;  // All preconditions are met
 }
 
-void generateArgumentCombinations(vector<list<string>>& result, const list<string>& args)
+// list<GroundedCondition> ground_action_effects(const Action& action, const list<string>& grounded_args)
+// {
+//   list<GroundedCondition> grounded_effects;
+//   const list<string>& action_args = action.get_args();  // Placeholders
+
+//   // Iterate over each effect of the action
+//   for (const Condition& effect : action.get_effects())
+//   {
+//     list<string> replaced_args;  // List to store replaced arguments
+
+//     // Replace each placeholder in the effect with the corresponding grounded argument
+//     for (const string& effect_arg : effect.get_args())
+//     {
+//       auto it_action_arg = find(action_args.begin(), action_args.end(), effect_arg);
+
+//       if (it_action_arg != action_args.end())
+//       {
+//         int index = distance(action_args.begin(), it_action_arg);
+//         auto it_ground = next(grounded_args.begin(), index);
+
+//         if (it_ground != grounded_args.end())
+//         {
+//           replaced_args.push_back(*it_ground);  // Replace placeholder
+//         }
+//         else
+//         {
+//           cerr << "Error: Grounded argument not found for placeholder." << endl;
+//           // Handle error appropriately
+//         }
+//       }
+//       else
+//       {
+//         cerr << "Error: Placeholder not found in action arguments." << endl;
+//         // Handle error appropriately
+//       }
+//     }
+
+//     // Create a grounded condition for the effect (including its truth value) and add it to the list
+//     GroundedCondition grounded_effect(effect.get_predicate(), replaced_args, effect.get_truth());
+//     grounded_effects.push_back(grounded_effect);
+//   }
+
+//   return grounded_effects;
+// }
+
+list<GroundedCondition> ground_action_effects(const Action& action, const list<string>& grounded_args)
 {
-  if (args.empty())
+  list<GroundedCondition> grounded_effects;
+  const list<string>& action_args = action.get_args();  // Placeholders
+
+  // Iterate over each effect of the action
+  for (const Condition& effect : action.get_effects())
   {
-    // If there are no arguments, there's only one combination (empty).
-    result.push_back(list<string>());
-    return;
-  }
+    list<string> replaced_args;  // List to store replaced arguments
 
-  // Convert the list of arguments to a vector for easier iteration.
-  vector<string> argsVector(args.begin(), args.end());
-
-  // Recursive function to generate combinations.
-  function<void(size_t, list<string>)> generate = [&](size_t index, list<string> currentCombination) {
-    if (index == argsVector.size())
+    // Replace each placeholder in the effect with the corresponding grounded argument
+    for (const string& effect_arg : effect.get_args())
     {
-      // We've reached the end of the arguments, add the current combination to the result.
-      result.push_back(currentCombination);
-      return;
+      auto it_action_arg = find(action_args.begin(), action_args.end(), effect_arg);
+
+      if (it_action_arg != action_args.end())
+      {
+        int index = distance(action_args.begin(), it_action_arg);
+        auto it_ground = next(grounded_args.begin(), index);
+
+        if (it_ground != grounded_args.end())
+        {
+          replaced_args.push_back(*it_ground);  // Replace placeholder
+        }
+        else
+        {
+          cerr << "Error: Grounded argument not found for placeholder: " << effect_arg << endl;
+        }
+      }
+      else
+      {
+        // This might indicate that the effect_arg is not a placeholder but a concrete value.
+        replaced_args.push_back(effect_arg);  // Use the argument as it is
+      }
     }
 
-    // Include the current argument in the combination.
-    currentCombination.push_back(argsVector[index]);
-    generate(index + 1, currentCombination);
-
-    // Exclude the current argument from the combination.
-    currentCombination.pop_back();
-    generate(index + 1, currentCombination);
-  };
-
-  // Start the recursive generation process.
-  generate(0, list<string>());
-}
-
-bool all_preconditions_met(
-    const unordered_set<Condition, ConditionHasher, ConditionComparator>& preconditions,
-    const unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator>& current_state,
-    const GroundedAction& grounded_action)
-{
-  for (const Condition& precondition : preconditions)
-  {
-    if (!is_precondition_met(precondition, current_state, grounded_action))
-    {
-      return false;
-    }
+    // Create a grounded condition for the effect (including its truth value) and add it to the list
+    GroundedCondition grounded_effect(effect.get_predicate(), replaced_args, effect.get_truth());
+    grounded_effects.push_back(grounded_effect);
   }
-  return true;
+
+  return grounded_effects;
 }
 
 list<GroundedAction> planner(Env* env)
@@ -963,9 +1107,25 @@ list<GroundedAction> planner(Env* env)
     open_list.pop();
     closed_list.insert(current_node);
     all_open_nodes.insert(current_node);
+    // print the state of the current node
+    // cout << "Current node: " << endl;
+    // for (GroundedCondition gc : current_node.state)
+    // {
+    //   cout << gc << endl;
+    // }
+    // cout << endl;
 
-    // If the current node is a goal state
-    if (current_node.state == env->goal_conditions)
+    // The goal condition can exist as a subset of the current state
+    bool goal_found = true;
+    for (GroundedCondition gc : env->goal_conditions)
+    {
+      if (current_node.state.find(gc) == current_node.state.end())
+      {
+        goal_found = false;
+        break;
+      }
+    }
+    if (goal_found)
     {
       cout << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!Goal state "
               "found!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
@@ -998,31 +1158,54 @@ list<GroundedAction> planner(Env* env)
     for (Action action : env->actions)
     {
       // Generate all combinations of arguments
-      list<list<string>> combinations = generate_combinations(env->get_symbols(), action.get_args().size());
+      auto symbols = env->get_symbols();
+      list<list<string>> combinations =
+          generate_permutations(symbols, action.get_args().size());  // TODO: this doesnt have to be done every time,
+                                                                     // can be done once and stored in a map
 
       for (const list<string>& args : combinations)
       {
         GroundedAction grounded_action(action.get_name(), args);
-        // Check if preconditions are met
-        if (all_preconditions_met(action.get_preconditions(), current_node.state, grounded_action))
+        if (are_all_preconditions_met(action, args, current_node.state))
         {
-          cout << "Action " << grounded_action << " is applicable" << endl;
+          // cout << "All preconditions met for " << grounded_action << endl;
           // Apply the action to the current state // TODO: make this a function
+          // unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator> new_state =
+          //     current_node.state;
+          list<GroundedCondition> grounded_effects = ground_action_effects(action, args);
+          // Apply these grounded effects to the current state to generate a new state
           unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator> new_state =
               current_node.state;
-          for (Condition effect : action.get_effects())
+
+          for (const GroundedCondition& effect : grounded_effects)
           {
-            GroundedCondition grounded_effect(effect.get_predicate(), args, effect.get_truth());
-            if (grounded_effect.get_truth())
+            if (effect.get_truth())
             {
-              new_state.insert(grounded_effect);
+              new_state.insert(effect);  // Add positive effect
             }
             else
             {
-              new_state.erase(grounded_effect);
+              // For negated effect, find and remove the corresponding positive condition
+              for (auto it = new_state.begin(); it != new_state.end();)
+              {
+                if (it->get_predicate() == effect.get_predicate() && it->get_arg_values() == effect.get_arg_values())
+                {
+                  it = new_state.erase(it);  // Remove the condition
+                }
+                else
+                {
+                  ++it;
+                }
+              }
             }
           }
-
+          // print the new state
+          // cout << "New state: " << endl;
+          // for (GroundedCondition gc : new_state)
+          // {
+          //   cout << gc << endl;
+          // }
+          // cout << endl;
           // Create a new node for the action
           Node new_node;
           new_node.state = new_state;
@@ -1043,7 +1226,10 @@ list<GroundedAction> planner(Env* env)
             }
           }
         }
-        cout << "Action " << grounded_action << " is not applicable" << endl;
+        else
+        {
+          // cout << "All preconditions not met for " << grounded_action << endl;
+        }
       }
     }
   }
