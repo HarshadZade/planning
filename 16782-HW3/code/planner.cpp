@@ -737,10 +737,18 @@ struct Node
 {
   unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator> state;
   std::shared_ptr<Node> parent;
-  // GroundedAction action;
+  GroundedAction action;  // Store the action leading to this node
   double g_cost;
   double heuristic;
 
+  Node() = default;
+
+  Node(const GroundedAction& action,
+       const unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator>& state,
+       const std::shared_ptr<Node>& parent, double g_cost, double heuristic)
+    : action(action), state(state), parent(parent), g_cost(g_cost), heuristic(heuristic)
+  {
+  }
   // Node(Node* parent, unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator> state,
   // double g_cost, double heuristic)
   // {
@@ -874,110 +882,6 @@ void print_arg_list(const list<string>& args)
     cout << arg << " ";
   }
 }
-// write a is_precondition_met function that takes a precondition, a state and a grounded action
-// the variables in the precondition should be replaced by the corresponding variables in the grounded action
-// the function should return true if the precondition is met in the state and false otherwise
-// Iterate over each precondition of the action
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-// const list<string>& action_args = action.get_args();  // Placeholders
-
-// // Iterate over each precondition of the action
-// for (const Condition& precondition : action.get_preconditions())
-// {
-//   list<string> replaced_args;  // List to store replaced arguments
-
-//   // Replace each placeholder in the precondition with the corresponding grounded argument
-//   for (const string& precondition_arg : precondition.get_args())
-//   {
-//     auto it_action_arg = find(action_args.begin(), action_args.end(), precondition_arg);
-
-//     if (it_action_arg != action_args.end())
-//     {
-//       // Find the corresponding grounded argument
-//       int index = distance(action_args.begin(), it_action_arg);
-//       auto it_ground = next(args.begin(), index);
-
-//       if (it_ground != args.end())
-//       {
-//         replaced_args.push_back(*it_ground++);  // Replace placeholder
-//       }
-//       else
-//       {
-//         cerr << "Error: Grounded argument not found for placeholder." << endl;
-//       }
-//     }
-//     else
-//     {
-//       cerr << "Error: Placeholder not found in action arguments." << endl;
-//     }
-//   }
-
-//   // Print the replaced args for debugging
-//   cout << "Precondition: " << precondition << endl;
-//   cout << "Replaced Args for Precondition: ";
-//   for (const auto& arg : replaced_args)
-//   {
-//     cout << arg << " ";
-//   }
-//   cout << endl;
-// }
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-// bool all_preconditions_met(
-//     const unordered_set<Condition, ConditionHasher, ConditionComparator>& preconditions,
-//     const unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator>& current_state,
-//     const GroundedAction& grounded_action)
-// {
-//   for (const Condition& precondition : preconditions)
-//   {
-//     // print the precondition
-//     cout << "Precondition: " << precondition << endl;
-//     if (!is_precondition_met(precondition, current_state, grounded_action))
-//     {
-//       return false;  // If any precondition is not met, return false
-//     }
-//   }
-//   return true;  // All preconditions are met
-// }
-
-/// WORKING FOR FIRST TWO CASES ///
-// bool are_all_preconditions_met(
-//     const Action& action, const list<string>& grounded_args,
-//     const unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator>& current_state)
-// {
-//   const list<string>& action_args = action.get_args();  // Placeholders
-
-//   // Iterate over each precondition of the action
-//   for (const Condition& precondition : action.get_preconditions())
-//   {
-//     list<string> replaced_args;  // List to store replaced arguments
-
-//     // Replace each placeholder in the precondition with the corresponding grounded argument
-//     for (const string& precondition_arg : precondition.get_args())
-//     {
-//       auto it_action_arg = find(action_args.begin(), action_args.end(), precondition_arg);
-
-//       if (it_action_arg != action_args.end())
-//       {
-//         int index = distance(action_args.begin(), it_action_arg);
-//         auto it_ground = next(grounded_args.begin(), index);
-
-//         if (it_ground != grounded_args.end())
-//         {
-//           replaced_args.push_back(*it_ground++);  // Replace placeholder
-//         }
-//         else
-//         {
-//           cerr << "Error: Grounded argument not found for placeholder." << endl;
-//           return false;
-//         }
-//       }
-//       else
-//       {
-//         cerr << "Error: Placeholder not found in action arguments." << endl;
-//         return false;
-//       }
-//     }
 
 bool are_all_preconditions_met(
     const Action& action, const list<string>& grounded_args,
@@ -1082,11 +986,8 @@ list<GroundedAction> planner(Env* env)
   std::unordered_set<Node, NodeHasher, NodeStateComparator> all_open_nodes;
 
   // Create a node for the initial state
-  Node start_node;
-  start_node.state = env->initial_conditions;
-  start_node.parent = nullptr;
-  start_node.g_cost = 0;
-  start_node.heuristic = compute_heuristic(start_node.state, env->goal_conditions);
+  Node start_node(GroundedAction("", list<string>()), env->initial_conditions, nullptr, 0,
+                  compute_heuristic(env->initial_conditions, env->goal_conditions));
 
   // Add the initial state to the open list
   open_list.push(start_node);
@@ -1101,13 +1002,6 @@ list<GroundedAction> planner(Env* env)
     open_list.pop();
     closed_list.insert(current_node);
     all_open_nodes.insert(current_node);
-    // print the state of the current node
-    // cout << "Current node: " << endl;
-    // for (GroundedCondition gc : current_node.state)
-    // {
-    //   cout << gc << endl;
-    // }
-    // cout << endl;
 
     // The goal condition can exist as a subset of the current state
     bool goal_found = true;
@@ -1121,31 +1015,17 @@ list<GroundedAction> planner(Env* env)
     }
     if (goal_found)
     {
-      cout << "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!Goal state "
-              "found!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-           << endl;
+      cout << "Goal found!" << endl;
       // Return the path to the goal
-      list<GroundedAction> path;
+      list<GroundedAction> plan;
       // list of all the states in the path
-      list<unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator>> path_states;
-
-      while (current_node.parent != nullptr)
+      shared_ptr<Node> current = make_shared<Node>(current_node);
+      while (current->parent != nullptr)
       {
-        // path.push_front(current_node.action); // FIXME: action is not stored in the node
-        path_states.push_front(current_node.state);
-        current_node = *current_node.parent;
+        plan.push_front(current->action);
+        current = current->parent;
       }
-      path_states.push_front(current_node.state);
-      cout << "states in the path: " << endl;
-      for (unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator> state : path_states)
-      {
-        for (GroundedCondition gc : state)
-        {
-          cout << gc << endl;
-        }
-        cout << endl;
-      }
-      return path;
+      return plan;
     }
 
     // For each action in the environment
@@ -1162,15 +1042,11 @@ list<GroundedAction> planner(Env* env)
         GroundedAction grounded_action(action.get_name(), args);
         if (are_all_preconditions_met(action, args, current_node.state))
         {
-          // cout << "All preconditions met for " << grounded_action << endl;
           // Apply the action to the current state // TODO: make this a function
-          // unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator> new_state =
-          //     current_node.state;
           list<GroundedCondition> grounded_effects = ground_action_effects(action, args);
           // Apply these grounded effects to the current state to generate a new state
           unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator> new_state =
               current_node.state;
-
           for (const GroundedCondition& effect : grounded_effects)
           {
             if (effect.get_truth())
@@ -1193,20 +1069,9 @@ list<GroundedAction> planner(Env* env)
               }
             }
           }
-          // print the new state
-          // cout << "New state: " << endl;
-          // for (GroundedCondition gc : new_state)
-          // {
-          //   cout << gc << endl;
-          // }
-          // cout << endl;
           // Create a new node for the action
-          Node new_node;
-          new_node.state = new_state;
-          new_node.parent = make_shared<Node>(current_node);
-          // new_node.action = grounded_action; // FIXME: action is not stored in the node
-          new_node.g_cost = current_node.g_cost + 1;
-          new_node.heuristic = compute_heuristic(new_node.state, env->goal_conditions);
+          Node new_node(grounded_action, new_state, make_shared<Node>(current_node), current_node.g_cost + 1,
+                        compute_heuristic(new_state, env->goal_conditions));
 
           // If the new node is not in the closed list
           if (closed_list.find(new_node) == closed_list.end())
@@ -1219,10 +1084,6 @@ list<GroundedAction> planner(Env* env)
               all_open_nodes.insert(new_node);
             }
           }
-        }
-        else
-        {
-          // cout << "All preconditions not met for " << grounded_action << endl;
         }
       }
     }
