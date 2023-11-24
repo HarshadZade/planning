@@ -828,6 +828,63 @@ size_t compute_heuristic(unordered_set<GroundedCondition, GroundedConditionHashe
   return heuristic;
 }
 
+void combine_util(const unordered_set<string>& symbols, int combination_size, list<string>& temp,
+                  list<list<string>>& combinations, unordered_set<string>::const_iterator it)
+{
+  // Base condition: if the combination size is met
+  if (temp.size() == combination_size)
+  {
+    combinations.push_back(temp);
+    return;
+  }
+
+  // Stop if no more elements can be added
+  if (it == symbols.end())
+  {
+    return;
+  }
+
+  // Include the current symbol and move to the next
+  temp.push_back(*it);
+  combine_util(symbols, combination_size, temp, combinations, next(it));
+
+  // Exclude the current symbol and move to the next
+  temp.pop_back();
+  combine_util(symbols, combination_size, temp, combinations, next(it));
+}
+
+list<list<string>> generate_combinations(const unordered_set<string>& symbols, int combination_size)
+{
+  list<list<string>> combinations;
+  list<string> temp;
+  combine_util(symbols, combination_size, temp, combinations, symbols.begin());
+  return combinations;
+}
+
+bool is_precondition_met(
+    const Condition& precondition,
+    const unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator>& current_state,
+    const GroundedAction& grounded_action)
+{
+  // Replace action arguments with grounded action arguments
+  list<string> args = precondition.get_args();
+  list<string> grounded_args = grounded_action.get_arg_values();
+  auto it_ground = grounded_args.begin();
+  for (auto& arg : args)
+  {
+    if (arg[0] == '?')  // Assuming arguments in actions start with '?'
+    {
+      arg = *it_ground;
+      ++it_ground;
+    }
+  }
+
+  GroundedCondition gc(precondition.get_predicate(), args, precondition.get_truth());
+
+  // Check if the grounded condition is in the current state
+  return current_state.find(gc) != current_state.end();
+}
+
 void generateArgumentCombinations(vector<list<string>>& result, const list<string>& args)
 {
   if (args.empty())
@@ -862,6 +919,21 @@ void generateArgumentCombinations(vector<list<string>>& result, const list<strin
   generate(0, list<string>());
 }
 
+bool all_preconditions_met(
+    const unordered_set<Condition, ConditionHasher, ConditionComparator>& preconditions,
+    const unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator>& current_state,
+    const GroundedAction& grounded_action)
+{
+  for (const Condition& precondition : preconditions)
+  {
+    if (!is_precondition_met(precondition, current_state, grounded_action))
+    {
+      return false;
+    }
+  }
+  return true;
+}
+
 list<GroundedAction> planner(Env* env)
 {
   // Create an open list (priority queue) for states to explore
@@ -890,6 +962,7 @@ list<GroundedAction> planner(Env* env)
     Node current_node = open_list.top();
     open_list.pop();
     closed_list.insert(current_node);
+    all_open_nodes.insert(current_node);
 
     // If the current node is a goal state
     if (current_node.state == env->goal_conditions)
@@ -924,73 +997,53 @@ list<GroundedAction> planner(Env* env)
     // For each action in the environment
     for (Action action : env->actions)
     {
-      // For each combination of arguments for the action
-      vector<list<string>> arg_combinations;
-      generateArgumentCombinations(arg_combinations, action.get_args());
-      for (list<string> arg_combination : arg_combinations)
+      // Generate all combinations of arguments
+      list<list<string>> combinations = generate_combinations(env->get_symbols(), action.get_args().size());
+
+      for (const list<string>& args : combinations)
       {
-        // check if the action is applicable
-        bool applicable = true;
-        for (Condition precondition : action.get_preconditions())
+        GroundedAction grounded_action(action.get_name(), args);
+        // Check if preconditions are met
+        if (all_preconditions_met(action.get_preconditions(), current_node.state, grounded_action))
         {
-          GroundedCondition grounded_precondition(precondition.get_predicate(), arg_combination,
-                                                  precondition.get_truth());
-          if (grounded_precondition.get_truth())
+          cout << "Action " << grounded_action << " is applicable" << endl;
+          // Apply the action to the current state // TODO: make this a function
+          unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator> new_state =
+              current_node.state;
+          for (Condition effect : action.get_effects())
           {
-            if (current_node.state.find(grounded_precondition) == current_node.state.end())
+            GroundedCondition grounded_effect(effect.get_predicate(), args, effect.get_truth());
+            if (grounded_effect.get_truth())
             {
-              applicable = false;
-              break;
+              new_state.insert(grounded_effect);
+            }
+            else
+            {
+              new_state.erase(grounded_effect);
             }
           }
-          else
+
+          // Create a new node for the action
+          Node new_node;
+          new_node.state = new_state;
+          new_node.parent = make_shared<Node>(current_node);
+          // new_node.action = grounded_action; // FIXME: action is not stored in the node
+          new_node.g_cost = current_node.g_cost + 1;
+          new_node.heuristic = compute_heuristic(new_node.state, env->goal_conditions);
+
+          // If the new node is not in the closed list
+          if (closed_list.find(new_node) == closed_list.end())
           {
-            if (current_node.state.find(grounded_precondition) != current_node.state.end())
+            // If the new node is not in the open list
+            if (all_open_nodes.find(new_node) == all_open_nodes.end())
             {
-              applicable = false;
-              break;
+              // Add the new node to the open list
+              open_list.push(new_node);
+              all_open_nodes.insert(new_node);
             }
           }
         }
-        if (!applicable)
-        {
-          cout << "Action " << action << " is not applicable" << endl;
-          continue;
-        }
-        // Create a new node for the action
-        Node new_node;
-        new_node.state = current_node.state;
-        new_node.parent = make_shared<Node>(current_node);
-        // new_node.action = GroundedAction(action.get_name(), arg_combination); // FIXME: action is not stored in the
-        // node
-        new_node.g_cost = current_node.g_cost + 1;
-        new_node.heuristic = compute_heuristic(new_node.state, env->goal_conditions);
-
-        // Apply the action to the new node
-        for (Condition effect : action.get_effects())
-        {
-          GroundedCondition grounded_effect(effect.get_predicate(), arg_combination, effect.get_truth());
-          if (grounded_effect.get_truth())
-          {
-            new_node.state.insert(grounded_effect);
-          }
-          else
-          {
-            new_node.state.erase(grounded_effect);
-          }
-        }
-
-        // If the new node is not in the closed list
-        if (closed_list.find(new_node) == closed_list.end())
-        {
-          // If the new node is not in the open list
-          if (all_open_nodes.find(new_node) == all_open_nodes.end())
-          {
-            // Add the new node to the open list
-            open_list.push(new_node);
-            all_open_nodes.insert(new_node);
-          }
-        }
+        cout << "Action " << grounded_action << " is not applicable" << endl;
       }
     }
   }
