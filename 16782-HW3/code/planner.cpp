@@ -11,6 +11,7 @@
 #include <queue>
 #include <unordered_map>
 #include <chrono>
+#include <limits.h>
 
 #define SYMBOLS 0
 #define INITIAL 1
@@ -29,7 +30,7 @@ class Env;
 using namespace std;
 
 bool print_status = true;
-
+size_t min_literals_added = 0;
 class GroundedCondition
 {
 private:
@@ -330,6 +331,7 @@ private:
   unordered_set<string> symbols;
 
   friend list<GroundedAction> planner(Env* env);  // planner function can access private variables of Env
+  friend int get_min_literals_added(const Env* env);
 
 public:
   void remove_initial_condition(GroundedCondition gc)
@@ -783,6 +785,29 @@ struct NodeHasher
   }
 };
 
+int get_min_literals_added(const Env* env)
+{
+  int min_literals = INT_MAX;  // Start with the maximum possible integer value
+
+  for (const Action& action : env->actions)
+  {
+    int literals_added = 0;
+    for (const Condition& effect : action.get_effects())
+    {
+      if (effect.get_truth())
+      {  // Only count positive effects
+        literals_added++;
+      }
+    }
+    if (literals_added > 0 && literals_added < min_literals)
+    {
+      min_literals = literals_added;
+    }
+  }
+
+  return min_literals == INT_MAX ? 0 : min_literals;  // Return 0 if no action adds any literals
+}
+
 size_t compute_heuristic(unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator> state,
                          unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator> goal)
 {
@@ -792,7 +817,8 @@ size_t compute_heuristic(unordered_set<GroundedCondition, GroundedConditionHashe
     if (state.find(gc) == state.end())
       heuristic++;
   }
-  return heuristic;
+  return heuristic / min_literals_added;
+  // return heuristic;
   // return 0; // To check if the algorithm works without heuristic
 }
 
@@ -944,6 +970,13 @@ list<GroundedAction> planner(Env* env)
   std::unordered_set<Node, NodeHasher, NodeStateComparator> closed_list;
   // Create a set to store all open nodes
   std::unordered_set<Node, NodeHasher, NodeStateComparator> all_open_nodes;
+
+  // get min_literals_added by iterating over all the actions and finding the minimum number of literals added by any
+  // action
+  min_literals_added = get_min_literals_added(env);
+  if (min_literals_added == 0)
+    min_literals_added = 1;
+  cout << "Min literals added by any action: " << min_literals_added << endl;
 
   // Create a node for the initial state
   Node start_node(GroundedAction("", list<string>()), env->initial_conditions, nullptr, 0,
