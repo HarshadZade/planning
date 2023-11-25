@@ -1,0 +1,16 @@
+Symbols: L1,L2,L3,L4,L5,P1,P2,P3,R1
+Initial conditions: At(R1, L1), At(P1, L2), At(P2, L3), At(P3, L4), Empty(R1), Robot(R1), Location(L1), Location(L2), Location(L3), Location(L4), Location(L5), Package(P1), Package(P2), Package(P3)
+Goal conditions: At(P1, L3), At(P2, L4), At(P3, L5)
+
+Actions:
+        Move(robot,from,to)
+        Preconditions: Robot(robot), Location(from), Location(to), At(robot,from)
+        Effects: At(robot,to), !At(robot,from)
+
+        PickUp(robot,package,location)
+        Preconditions: Robot(robot), Package(package), Location(location), At(robot,location), At(package,location), Empty(robot)
+        Effects: Carrying(robot,package), !At(package,location), !Empty(robot)
+
+        PutDown(robot,package,location)
+        Preconditions: Robot(robot), Package(package), Location(location), Carrying(robot,package), At(robot,location)
+        Effects: At(package,location), Empty(robot), !Carrying(robot,package)

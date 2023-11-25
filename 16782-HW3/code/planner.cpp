@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <queue>
 #include <unordered_map>
+#include <chrono>
 
 #define SYMBOLS 0
 #define INITIAL 1
@@ -994,6 +995,10 @@ list<GroundedAction> planner(Env* env)
   all_open_nodes.insert(start_node);
   closed_list.insert(start_node);
 
+  using namespace std::chrono;
+  auto start_time = high_resolution_clock::now();
+  int expanded_states = 0;
+
   // While the open list is not empty
   while (!open_list.empty())
   {
@@ -1002,6 +1007,7 @@ list<GroundedAction> planner(Env* env)
     open_list.pop();
     closed_list.insert(current_node);
     all_open_nodes.insert(current_node);
+    expanded_states++;
 
     // The goal condition can exist as a subset of the current state
     bool goal_found = true;
@@ -1025,6 +1031,10 @@ list<GroundedAction> planner(Env* env)
         plan.push_front(current->action);
         current = current->parent;
       }
+      auto end_time = high_resolution_clock::now();
+      auto duration = duration_cast<milliseconds>(end_time - start_time).count();
+      cout << "Time taken: " << duration << " ms" << endl;
+      cout << "Number of States Expanded: " << expanded_states << endl;
       return plan;
     }
 
@@ -1088,6 +1098,10 @@ list<GroundedAction> planner(Env* env)
       }
     }
   }
+  auto end_time = high_resolution_clock::now();
+  auto duration = duration_cast<milliseconds>(end_time - start_time).count();
+  cout << "Time taken: " << duration << " ms" << endl;
+  cout << "Number of States Expanded: " << expanded_states << endl;
   return list<GroundedAction>();
 }
 
