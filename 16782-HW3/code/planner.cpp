@@ -750,50 +750,6 @@ struct Node
     : action(action), state(state), parent(parent), g_cost(g_cost), heuristic(heuristic)
   {
   }
-  // Node(Node* parent, unordered_set<GroundedCondition, GroundedConditionHasher, GroundedConditionComparator> state,
-  // double g_cost, double heuristic)
-  // {
-  //   this->parent = parent;
-  //   // this->action = action;
-  //   this->state = state;
-  //   this->g_cost = g_cost;
-  //   this->heuristic = heuristic;
-  // }
-
-  // bool operator==(const Node& rhs) const
-  // {
-  //   if (this->action != rhs.action || this->state.size() != rhs.state.size())
-  //     return false;
-
-  //   auto lhs_it = this->state.begin();
-  //   auto rhs_it = rhs.state.begin();
-
-  //   while (lhs_it != this->state.end() && rhs_it != rhs.state.end())
-  //   {
-  //     if (*lhs_it != *rhs_it)
-  //       return false;
-  //     ++lhs_it;
-  //     ++rhs_it;
-  //   }
-  //   return true;
-  // }
-
-  // friend ostream& operator<<(ostream& os, const Node& node)
-  // {
-  //   os << node.toString() << " ";
-  //   return os;
-  // }
-
-  // string toString() const
-  // {
-  //   string temp = "";
-  //   temp += this->action.toString();
-  //   temp += " ";
-  //   temp += to_string(this->g_cost);
-  //   temp += " ";
-  //   temp += to_string(this->heuristic);
-  //   return temp;
-  // }
 };
 
 struct NodeCostComparator
@@ -812,7 +768,7 @@ struct NodeStateComparator
   }
 };
 
-struct NodeHasher  // TODO: get a better hash function
+struct NodeHasher
 {
   size_t operator()(const Node& node) const
   {
@@ -821,6 +777,8 @@ struct NodeHasher  // TODO: get a better hash function
     {
       temp += gc.toString();
     }
+    // reorder the temp string to make sure the hash is the same for the same state
+    sort(temp.begin(), temp.end());
     return hash<string>{}(temp);
   }
 };
@@ -835,6 +793,7 @@ size_t compute_heuristic(unordered_set<GroundedCondition, GroundedConditionHashe
       heuristic++;
   }
   return heuristic;
+  // return 0; // To check if the algorithm works without heuristic
 }
 
 void permute_util(const unordered_set<string>& symbols, int permutation_size, list<string>& temp,
@@ -1035,12 +994,15 @@ list<GroundedAction> planner(Env* env)
       auto duration = duration_cast<milliseconds>(end_time - start_time).count();
       cout << "Time taken: " << duration << " ms" << endl;
       cout << "Number of States Expanded: " << expanded_states << endl;
+      cout << "Number of Actions in the Plan: " << plan.size() << endl;
       return plan;
     }
 
     // For each action in the environment
     for (Action action : env->actions)
     {
+      // print action
+      // cout << action << endl;
       // Generate all combinations of arguments
       auto symbols = env->get_symbols();
       list<list<string>> combinations =
@@ -1102,6 +1064,7 @@ list<GroundedAction> planner(Env* env)
   auto duration = duration_cast<milliseconds>(end_time - start_time).count();
   cout << "Time taken: " << duration << " ms" << endl;
   cout << "Number of States Expanded: " << expanded_states << endl;
+  // cout << "Number of Actions in the Plan: " << plan.size() << endl;
   return list<GroundedAction>();
 }
 
